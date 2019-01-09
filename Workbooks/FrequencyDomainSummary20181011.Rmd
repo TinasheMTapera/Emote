@@ -1,0 +1,337 @@
+---
+title: "FrequencyDomainSummary3"
+output: html_notebook
+---
+
+# Identify the outliers in frequency domain and observe individually
+
+The following rows have at least one value where there is a positive outlier (1.5 $\times$ the interquartile range).
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(when, ID, Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(Avg_niHR:LFHF_6), any_vars(. > IQR(., na.rm = T)*1.5))
+```
+
+Moving forward, we filter control outliers out, and truncate episode outliers, filtering by highest value possible according to the literature.
+
+HF max ~ 3630
+
+LF max ~ 1009
+
+LFHF max ~ 11.6
+
+
+The following table shows all of the available data (no row-wise completeness required) when we apply the above filters.
+
+```{r}
+HF_max = 3630
+LF_max = 1009
+LFHF_max = 11.6
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(ID, Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%#if is episode and outlier, assign to max val
+  psych::describe(quant=c(.25,.75))%>%
+  as_tibble()%>%
+  rownames_to_column()%>%
+  rename(Variable = rowname)%>%
+  select(-c(vars, trimmed, mad))
+```
+
+Split by condition we have, for controls:
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(ID, Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%#if is episode and outlier, assign to max val
+  filter(Y == "Control")%>%
+  psych::describe(quant=c(.25,.75))%>%
+  as_tibble()%>%
+  rownames_to_column()%>%
+  rename(Variable = rowname)%>%
+  select(-c(vars, trimmed, mad))
+```
+
+And for episodes:
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(ID, Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%#if is episode and outlier, assign to max val
+  filter(Y != "Control")%>%
+  psych::describe(quant=c(.25,.75))%>%
+  as_tibble()%>%
+  rownames_to_column()%>%
+  rename(Variable = rowname)%>%
+  select(-c(vars, trimmed, mad))
+```
+
+# Visualisations After Filtering & No Row-Wise Completion
+
+All plots shown for full data set and split by condition.
+
+## Heart Rate
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%#if is episode and outlier, assign to max val
+  gather("Variable", "Value", 2:5)%>%
+  ggplot(aes(Value))+
+  geom_density(aes(colour=Variable), alpha=0.5)+
+  #geom_histogram(aes(fill=Variable), alpha=0.5, bins = 100)+
+  theme_minimal()+
+  labs(title = "Histogram of All Variables", subtitle = "Heart Rate Variables")+
+  scale_fill_viridis_d()
+```
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%#if is episode and outlier, assign to max val
+  gather("Variable", "Value", 2:5)%>%
+  ggplot(aes(Value))+
+  geom_density(aes(colour=Variable), alpha=0.5)+
+  #geom_histogram(aes(fill=Variable), alpha=0.5, bins = 100)+
+  theme_minimal()+
+  labs(title = "Histogram of All Variables", subtitle = "Heart Rate Variables")+
+  scale_fill_viridis_d()+
+  facet_grid(Y~.)
+```
+
+## High frequency
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%
+  select(Y, HF_1:HF_6)%>%
+  #filter(complete.cases(.))%>%
+  # group_by(ID)%>%
+  # mutate_at(.vars = vars(Avg_niHR:Avg_HR, HF_6, LF_6, LFHF_6), funs(scale))%>% #z score transform
+  # ungroup()%>%
+  #select(Y, everything())%>%
+  gather("Variable", "Value", 2:7)%>%
+  ggplot(aes(Value))+
+  geom_density(aes(colour=Variable), alpha=0.5)+
+  #geom_histogram(aes(fill=Variable), alpha=0.5, bins = 100)+
+  theme_minimal()+
+  labs(title = "Histogram of All Variables", subtitle = "High Frequency Variables")+
+  scale_fill_viridis_d()
+```
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%
+  select(Y, HF_1:HF_6)%>%
+  #filter(complete.cases(.))%>%
+  # group_by(ID)%>%
+  # mutate_at(.vars = vars(Avg_niHR:Avg_HR, HF_6, LF_6, LFHF_6), funs(scale))%>% #z score transform
+  # ungroup()%>%
+  #select(Y, everything())%>%
+  gather("Variable", "Value", 2:7)%>%
+  ggplot(aes(Value))+
+  geom_density(aes(colour=Variable), alpha=0.5)+
+  #geom_histogram(aes(fill=Variable), alpha=0.5, bins = 100)+
+  theme_minimal()+
+  labs(title = "Histogram of All Variables", subtitle = "High Frequency Variables")+
+  scale_fill_viridis_d()+
+  facet_grid(Y~.)
+```
+
+## Low frequency
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%
+  select(Y, LF_1:LF_6)%>%
+  #filter(complete.cases(.))%>%
+  # group_by(ID)%>%
+  # mutate_at(.vars = vars(Avg_niHR:Avg_HR, HF_6, LF_6, LFHF_6), funs(scale))%>% #z score transform
+  # ungroup()%>%
+  #select(Y, everything())%>%
+  gather("Variable", "Value", 2:7)%>%
+  ggplot(aes(Value))+
+  #geom_histogram(aes(fill=Variable), alpha=0.5, bins = 100)+
+  geom_density(aes(colour=Variable), alpha=0.5)+
+  theme_minimal()+
+  labs(title = "Histogram of All Variables", subtitle = "Low Frequency Variables")+
+  scale_fill_viridis_d()
+```
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%
+  select(Y, LF_1:LF_6)%>%
+  #filter(complete.cases(.))%>%
+  # group_by(ID)%>%
+  # mutate_at(.vars = vars(Avg_niHR:Avg_HR, HF_6, LF_6, LFHF_6), funs(scale))%>% #z score transform
+  # ungroup()%>%
+  #select(Y, everything())%>%
+  gather("Variable", "Value", 2:7)%>%
+  ggplot(aes(Value))+
+  #geom_histogram(aes(fill=Variable), alpha=0.5, bins = 100)+
+  geom_density(aes(colour=Variable), alpha=0.5)+
+  theme_minimal()+
+  labs(title = "Histogram of All Variables", subtitle = "Low Frequency Variables")+
+  scale_fill_viridis_d()+
+  facet_grid(Y~.)
+```
+
+## LFHF
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%
+  select(Y, LFHF_1:LFHF_6)%>%
+  #filter(complete.cases(.))%>%
+  # group_by(ID)%>%
+  # mutate_at(.vars = vars(Avg_niHR:Avg_HR, HF_6, LF_6, LFHF_6), funs(scale))%>% #z score transform
+  # ungroup()%>%
+  #select(Y, everything())%>%
+  gather("Variable", "Value", 2:7)%>%
+  ggplot(aes(Value))+
+  #geom_histogram(aes(fill=Variable), alpha=0.5, bins = 100)+
+  geom_density(aes(colour=Variable))+
+  theme_minimal()+
+  labs(title = "Histogram of All Variables", subtitle = "LF/HF Variables")+
+  scale_fill_viridis_d()
+```
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%
+  select(Y, LFHF_1:LFHF_6)%>%
+  #filter(complete.cases(.))%>%
+  # group_by(ID)%>%
+  # mutate_at(.vars = vars(Avg_niHR:Avg_HR, HF_6, LF_6, LFHF_6), funs(scale))%>% #z score transform
+  # ungroup()%>%
+  #select(Y, everything())%>%
+  gather("Variable", "Value", 2:7)%>%
+  ggplot(aes(Value))+
+  #geom_histogram(aes(fill=Variable), alpha=0.5, bins = 100)+
+  geom_density(aes(colour=Variable))+
+  theme_minimal()+
+  labs(title = "Histogram of All Variables", subtitle = "LF/HF Variables")+
+  scale_fill_viridis_d()+
+  facet_grid(Y~.)
+```
+
+# Final Amount of Data
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%
+  filter(complete.cases(.))%>%
+  group_by(Y)%>%
+  count()
+```
+
+# Between Groups Tests
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(Y, Avg_niHR:LFHF_6)%>%
+  filter_at(.vars = vars(HF_1:HF_6), any_vars(!(Y == "Control" & . > HF_max)))%>%#if is control and outlier, remove
+  filter_at(.vars = vars(LF_1:LF_6), any_vars(!(Y == "Control" & . > LF_max)))%>% #if is control and outlier, remove
+  filter_at(.vars = vars(LFHF_1:LFHF_6), any_vars(!(Y == "Control" & . > LFHF_max)))%>% #if is control and outlier, remove
+  mutate_at(.vars = vars(HF_1:HF_6), funs(ifelse(. > HF_max, HF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LF_1:LF_6), funs(ifelse(. > LF_max, LF_max, .)))%>%#if is episode and outlier, assign to max val
+  mutate_at(.vars = vars(LFHF_1:LFHF_6), funs(ifelse(. > LFHF_max, LFHF_max, .)))%>%
+  summarise_at(funs(twotPermutation(.[Y == "Control" & !is.na(.)],
+                                    .[Y != "Control" & !is.na(.)], 
+                                    plotit = F)),
+               .vars = vars(Avg_niHR:LFHF_6))%>%
+  gather("Variable", "P.Value")%>%
+  mutate(Significant = ifelse(P.Value < 0.05, "Significant", "Not Significant"))
+```
+

@@ -1,0 +1,23 @@
+Variable,P.Value,Significant
+Avg_niHR,5e-4,Significant
+Start_niHR,0.396,Not Significant
+End_niHR,5e-4,Significant
+Avg_HR,0.002,Significant
+HF_1,0.294,Not Significant
+HF_2,0.888,Not Significant
+HF_3,0.221,Not Significant
+HF_4,0.0285,Significant
+HF_5,0.18,Not Significant
+HF_6,0.141,Not Significant
+LF_1,0.18,Not Significant
+LF_2,0.331,Not Significant
+LF_3,0.0415,Significant
+LF_4,0.091,Not Significant
+LF_5,0.529,Not Significant
+LF_6,0.472,Not Significant
+LFHF_1,0.956,Not Significant
+LFHF_2,0.334,Not Significant
+LFHF_3,0.215,Not Significant
+LFHF_4,0.644,Not Significant
+LFHF_5,0.14,Not Significant
+LFHF_6,0.686,Not Significant

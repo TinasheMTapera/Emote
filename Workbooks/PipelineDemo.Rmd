@@ -1,0 +1,533 @@
+---
+title: "Emote Pipeline Demo"
+output: html_notebook
+---
+
+Session info and packages:
+```{r session settings, echo=FALSE}
+TZ = "America/New_York"
+Sys.setenv(TZ="America/New_York")
+library(tidyverse, quietly = TRUE) #for tidy R programming
+library(data.table, quietly = TRUE) #for fast csv reading
+library(lubridate, quietly = TRUE) #for datetime manipulation
+library(RHRV, quietly = TRUE) #for heart rate variability analysis in R
+library(readxl, quietly = TRUE) #use the tidyverse readxl package; fewest errors with .xlsx files
+```
+
+# Reading in EMOTE Data
+
+The Emote dataset is described in the EMOTE folder on the psychology shared drive. To extract IBI, we wrote a python function to pull IBI from the zip files and concatenate each participant's sessions. The result is one .csv per participant, which is read into a tibble/dataframe as follows:
+
+```{r}
+# Note: we read this in from the psychology shared drive
+example_ibi_file = "/Volumes/psychology/Shared/WEACT/EMOTE/TT_Analysis/watch_data/IBI_participant_207.csv"
+example_ibi_file = fread(example_ibi_file)
+head(example_ibi_file)
+
+example_ibi_file = example_ibi_file%>%
+  as_tibble()%>%
+  # create new variables with mutate() and lubridate package
+  mutate(Beat = as_datetime(Beat_Time+Session_Start_GMT, tz = "GMT"),
+           Session_Start_GMT = as_datetime(Session_Start_GMT),
+           Beat2 = as.numeric(Beat) - as.numeric(Session_Start_GMT[1]),
+           ID = 207)%>%
+  arrange(Beat)
+
+head(example_ibi_file)
+```
+
+We read them all into one grouped dataframe in a loop:
+
+```{r reading in ibi}
+# first, list all of the available files
+# Note: we read this in from the psychology shared drive
+participants_csv_list = list.files("/Volumes/psychology/Shared/WEACT/EMOTE/TT_Analysis/watch_data")%>%
+  grep(pattern = "*.csv", x=., value = TRUE)
+
+# initialise empty list
+participants = list()
+
+# loop through the files
+for(x in 1:length(participants_csv_list)){
+  participants[[x]] = fread(paste0("/Volumes/psychology/Shared/WEACT/EMOTE/TT_Analysis/watch_data/", participants_csv_list[x]))%>%
+    as_tibble()
+  
+  participants[[x]] = participants[[x]]%>%
+    mutate(Beat = as_datetime(Beat_Time+Session_Start_GMT, tz = "GMT"),
+           Session_Start_GMT = as_datetime(Session_Start_GMT),
+           Beat2 = as.numeric(Beat) - as.numeric(Session_Start_GMT[1]),
+           ID = as.numeric(gsub(pattern = "\\D", replacement =  "", x = participants_csv_list[x])))%>%
+    arrange(Beat)
+}
+
+ibi_data = bind_rows(participants)
+
+head(ibi_data)
+```
+
+There is not much data cleaning required as RHRV takes care of most of this. RHRV reads in a vector of beats, where each beat is the offset in seconds from time = 0. This is why we add the columns `Beat2` and `Session_Start_GMT`, so that we can have one continuous vector of beats for one participant csv:
+
+```{r}
+ibi_data%>%
+  filter(ID == 207)%>%
+  select(Beat, Beat2)%>%
+  plot(main = "Participant 207 IBI Data", xlab = "DateTime", ylab = "Beat Number")
+```
+
+As you can see, each beat is offset from the initial start time of t=0.
+
+The labels for classification are given by surveys, which are also accessible in the EMOTE folder. These surveys are self-reported and come with timestamps for the survey time or eating episode time. Timestamps for eating episode had to be adjusted by hand, so the surveys file is static and should not be edited.
+
+```{r}
+# Note: we read this in from the psychology shared drive
+surveys = read_excel("/Volumes/psychology/Shared/WEACT/EMOTE/TT_Analysis/Participants/UpdatedSurveys_180713.xlsx")
+head(surveys)
+
+# read in the surveys and clean with lubridate
+surveys = surveys%>%
+  mutate(when = ymd_hms(when),
+         Y = factor(ifelse(EmotionalEatingEpisodes == 1 | EmotionalEatingEpisodes == 3, "Episode", "Control")),
+         Event = ymd_hms(Event))%>%
+  select(ID:Stress, Y, -EmotionalEatingEpisodes)%>%
+  filter(complete.cases(.))%>%
+  arrange(ID, when)
+
+head(surveys)
+```
+
+# Creating HRV Data
+
+To create HRV data, we read in this continuous vector of beats into an RHRV object. See [the documentation page](http://rhrv.r-forge.r-project.org/) for a tutorial on RHRV.
+
+We specifically read in the beat as a numeric offset from the start of the session. Note that the beats must be numeric and the start of the session must be a date string:
+
+```{r}
+# this follows the procedure according to `RHRV`. use ??RHRV for more info
+rr = CreateHRVData()
+rr = SetVerbose(rr, FALSE)
+
+# we upload only the vector of beats
+# note that we use the first example ibi as it is participant 207's
+rr = LoadBeatVector(rr, example_ibi_file$Beat2[1:800], datetime = format(example_ibi_file$Session_Start_GMT[1], "%d/%m/%Y %H:%M:%S"))
+rr = BuildNIHR(rr)
+rr = FilterNIHR(rr)
+rr[1:6]
+
+plot(example_ibi_file$Beat[1:800], rr$Beat$Time[1:800], main = "Verify RHRV Read-in")
+```
+
+In order to calculate time-domain features in RHRV, simply do the following:
+
+```{r}
+TIME_WINDOW_SIZE = 60*5 #width of sliding window used for calculating features, here set at ten minutes
+rr = CreateTimeAnalysis(rr, size = TIME_WINDOW_SIZE)
+```
+
+
+RHRV calculates all of the common time-domain features for the beats series; you can specify a few parameters, but the most important is the size of the sliding window that passes over the series. See [the documentation page](http://rhrv.r-forge.r-project.org/) to understand how this is done.
+
+They are accessed using simple list indexing:
+
+```{r}
+rr$TimeAnalysis[[1]][2:11]%>%
+  as_tibble()
+```
+
+Similarly, frequency-domain features are handled by RHRV:
+
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+rr = InterpolateNIHR(rr, freqhr = 4, method = "spline") 
+#this interpolation is only necessary for frequency-domain analysis, set at 4Hz; very resource intensive for large time series
+
+# We calculate what proportion of interpolated HR had to be interpolated to zero. If it is greater than 5% of the data, we reduce the window size and shift in order to get the most amount of data we can
+rr = CreateFreqAnalysis(rr)
+
+zero_proportion = length(which(rr$HR == 0))/length(rr$HR)
+  
+if(zero_proportion <= 0.05){
+  FREQ_WINDOW_SIZE = 300 #width of sliding window used to calculate frequency domain features, set at 1 minute
+  FREQ_WINDOW_SHIFT = 30 #the step size of the window in seconds
+}else{
+  FREQ_WINDOW_SIZE = 120 #width of sliding window used to calculate frequency domain features, set at 1 minute
+  FREQ_WINDOW_SHIFT = 1 #the step size of the window in seconds
+}
+
+
+rr = CalculatePowerBand(rr,indexFreqAnalysis = length(rr$FreqAnalysis), type = "fourier",  size = FREQ_WINDOW_SIZE, shift = FREQ_WINDOW_SHIFT) #fourier analysis is recommended
+```
+
+This gives us a frequency analysis — the power of the heart rate signal for different frequency bands at each time point governed by `FREQ_WINDOW_SHIFT` — that can be extracted with list indexing:
+
+```{r}
+do.call(cbind, rr$FreqAnalysis[[1]][1:7])%>%
+  as_tibble()
+```
+
+We subset the data into 6 sections and extract mean power bands from each and turn it into features using summary functions:
+
+```{r}
+do.call(cbind, rr$FreqAnalysis[[1]][1:7])%>%
+  as_tibble()%>%
+  # get a usable index
+  rownames_to_column("Section")%>%
+  #get a section variable by splitting the column length into 6 portions
+  mutate(Section = rep(1:6, each = ceiling(n()/6), length.out=n()))%>%
+  group_by(Section)%>%
+  select(Section, LF:LFHF)%>%
+  # for each of these sections, calculate the mean
+  summarise_at(vars(LF:LFHF), funs(mean, .args = c(na.rm=T)))%>%
+  # gather, unite, and spread
+  # this is simply a reshaping process; run through code line by line to see why
+  gather(variable, value, 2:4)%>%
+  unite(data = ., "Section2", c(variable, Section))%>%
+  spread(Section2, value)
+```
+
+# Extracting Features
+
+In order to run machine learning, we subset a participant's data using the surveys and carry out the same process. We define functions for modular use. We also modify the original RHRV function `CreateTimeAnalysis` so that NA values are not generated when using `mean()` or `sd()`.
+
+```{r}
+#####################################################
+CreateTimeAnalysis2 = function(HRVData, size = 300, numofbins = NULL, interval = 7.8125, windowBeatMin = 250, minNumWindows = 1,
+      verbose = NULL) 
+  {
+      message("Using modified version of \"CreateTimeAnalysis\"")
+      message(paste0(c("\nBeat Min: ", windowBeatMin,
+                     "\nWindow Min: ", minNumWindows)))
+  
+      HRVData = HandleVerboseArgument(HRVData, verbose)
+      VerboseMessage(HRVData$Verbose, "Creating time analysis")
+      num = length(HRVData$TimeAnalysis)
+      HRVData$TimeAnalysis[[num + 1]] = list()
+      HRVData$TimeAnalysis[[num + 1]]$size = size
+      minRR = min(HRVData$Beat$RR)
+      maxRR = max(HRVData$Beat$RR)
+      if (!is.null(numofbins)) {
+          interval = (maxRR - minRR)/(numofbins - 2)
+          vecthist = seq(minRR - interval/2, maxRR + interval/2, 
+              len = numofbins + 1)
+      }
+      else {
+          medRR = (min(HRVData$Beat$RR) + max(HRVData$Beat$RR))/2
+          lowhist = medRR - interval * ceiling((medRR - minRR)/interval)
+          longhist = ceiling((maxRR - lowhist)/interval) + 1
+          vecthist = seq(from = lowhist, by = interval, length.out = longhist)
+      }
+      VerboseMessage(HRVData$Verbose, paste("Size of window:", 
+          size, "seconds"))
+      VerboseMessage(HRVData$Verbose, paste("Width of bins in histogram:", 
+          interval, "milliseconds"))
+      HRVData$TimeAnalysis[[num + 1]]$SDNN = sd(HRVData$Beat$RR, na.rm = TRUE)
+      WindowMin = head(HRVData$Beat$Time, n = 1)
+      WindowMax = WindowMin + size
+      WindowIndex = 1
+      RRWindowMean = c(0)
+      RRWindowSD = c(0)
+      while (WindowMax < tail(HRVData$Beat$Time, 1)) {
+          RRWindow = HRVData$Beat$RR[HRVData$Beat$Time >= WindowMin & 
+              HRVData$Beat$Time < WindowMax]
+          ##########################
+          # MAJOR MODIFICATION HERE
+          #if (length(RRWindow) == 0) {
+          if (length(RRWindow) < windowBeatMin) {
+              
+          ##########################
+              message = paste(sep = "", "Interval without enough beats from ", 
+                  WindowMin, " to ", WindowMax, " seconds! Returning NA in SDANN and SDNNIDX\n***[MODIFIED]***")
+              warning(message)
+              RRWindowMean[WindowIndex] = NA
+              RRWindowSD[WindowIndex] = NA
+              ##########################
+              # MAJOR MODIFICATION HERE
+              #break
+              #########################
+          }else{
+            RRWindowMean[WindowIndex] = mean(RRWindow, na.rm = TRUE)
+            RRWindowSD[WindowIndex] = sd(RRWindow, na.rm = TRUE)
+          }
+          
+          WindowMin = WindowMin + size
+          WindowMax = WindowMax + size
+          WindowIndex = WindowIndex + 1
+      }
+      
+      ##########################
+      # MAJOR MODIFICATION HERE
+      #numberOfWindows = WindowIndex - 1
+      numberOfWindows = length(RRWindowMean[!is.na(RRWindowMean)])
+      ##########################
+      VerboseMessage(HRVData$Verbose, paste("Number of windows:", 
+          numberOfWindows))
+      ##########################
+      # MAJOR MODIFICATION HERE
+      if (numberOfWindows < minNumWindows) {
+          warning("There are not enough complete windows. Cannot compute the standard deviation! Returning NA in all features!\n***[MODIFIED]***")
+        
+        HRVData$TimeAnalysis[[num + 1]]$SDANN = NA
+        HRVData$TimeAnalysis[[num + 1]]$SDNNIDX = NA
+        RRDiffs = NA
+        RRDiffs50 = NA
+        HRVData$TimeAnalysis[[num + 1]]$pNN50 = NA
+        HRVData$TimeAnalysis[[num + 1]]$SDSD = NA
+        HRVData$TimeAnalysis[[num + 1]]$rMSSD = NA
+        HRVData$TimeAnalysis[[num + 1]]$IRRR = NA
+        HRVData$TimeAnalysis[[num + 1]]$MADRR = NA
+        #h = hist(HRVData$Beat$RR, breaks = vecthist, plot = FALSE)
+        #area = length(HRVData$Beat$RR) * interval
+        #maxhist = max(h$counts)
+        HRVData$TimeAnalysis[[num + 1]]$TINN = NA
+        HRVData$TimeAnalysis[[num + 1]]$HRVi = NA
+      }else{
+      HRVData$TimeAnalysis[[num + 1]]$SDANN = sd(RRWindowMean, na.rm = TRUE)
+      HRVData$TimeAnalysis[[num + 1]]$SDNNIDX = mean(RRWindowSD, na.rm = TRUE)
+      RRDiffs = diff(HRVData$Beat$RR)
+      RRDiffs50 = RRDiffs[abs(RRDiffs) > 50]
+      HRVData$TimeAnalysis[[num + 1]]$pNN50 = 100 * length(RRDiffs50)/length(RRDiffs)
+      HRVData$TimeAnalysis[[num + 1]]$SDSD = sd(RRDiffs, na.rm = TRUE)
+      HRVData$TimeAnalysis[[num + 1]]$rMSSD = sqrt(mean(RRDiffs^2))
+      HRVData$TimeAnalysis[[num + 1]]$IRRR = IQR(HRVData$Beat$RR)
+      HRVData$TimeAnalysis[[num + 1]]$MADRR = median(abs(RRDiffs), na.rm = TRUE)
+      h = hist(HRVData$Beat$RR, breaks = vecthist, plot = FALSE)
+      area = length(HRVData$Beat$RR) * interval
+      maxhist = max(h$counts)
+      HRVData$TimeAnalysis[[num + 1]]$TINN = area/maxhist * 2
+      HRVData$TimeAnalysis[[num + 1]]$HRVi = length(HRVData$Beat$RR)/maxhist
+      }
+      ##########################
+      VerboseMessage(HRVData$Verbose, c(paste("Data has now", num + 
+          1, "time analyses\n"), paste(" SDNN:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$SDNN), "msec.\n"), paste(" SDANN:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$SDANN), "msec.\n"), paste(" SDNNIDX:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$SDNNIDX), "msec.\n"), paste(" pNN50:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$pNN50), "%\n"), paste(" SDSD:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$SDSD), "msec.\n"), paste(" r-MSSD:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$rMSSD), "msec.\n"), paste(" IRRR:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$IRRR), "msec.\n"), paste(" MADRR:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$MADRR), "msec.\n"), paste(" TINN:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$TINN), "msec.\n"), paste(" HRV index:", rhrvFormat(HRVData$TimeAnalysis[[num + 
+          1]]$HRVi))))
+      return(HRVData)
+  }
+  
+tmpfun <- get("CreateTimeAnalysis", envir = asNamespace("RHRV"))
+environment(CreateTimeAnalysis2) <- environment(tmpfun)
+attributes(CreateTimeAnalysis2) <- attributes(tmpfun)  # don't know if this is really needed
+assignInNamespace("CreateTimeAnalysis", CreateTimeAnalysis2, ns = "RHRV")
+
+  #################################################
+```
+
+```{r}
+MakeHRVObject = function(subdf, freq=4){
+  
+  rr = CreateHRVData()
+  rr = SetVerbose(rr, FALSE )
+  rr = LoadBeatVector(rr, subdf$Beat2, datetime = format(subdf$Session_Start_GMT[1],"%d/%m/%Y %H:%M:%S"))
+  rr = BuildNIHR(rr)
+  rr = FilterNIHR(rr)
+  
+  #there is an offset from the session start to the first beat; remove this first row as it is
+  # an incorrect reading (session start: 5pm; start of episode reading: 10pm; therefore RR = 5 hours?)
+  
+ if(rr$Beat$RR[1] > 1160){ #1160 is the largest value reported in the literature
+    rr$Beat = rr$Beat[-1,]
+  }
+  
+  return(rr)
+}
+
+ExtractTimeFeatures = function(rhrv_obj, time_window_size=300, minNumWindows = 2, windowBeatMin = 250){
+  
+  rr = rhrv_obj
+  
+  rr = RHRV::CreateTimeAnalysis(rr, minNumWindows = minNumWindows, windowBeatMin = windowBeatMin, size = time_window_size)
+  
+  rr$TimeAnalysis[[1]]%>%
+    unlist()%>%
+    t()%>%
+    as_tibble()%>%
+    select(-size)%>%
+    return()
+}
+
+
+ExtractFreqFeatures = function(rhrv_obj, freq=4, size=300, shift=30){
+  
+  rr = rhrv_obj
+  
+  tryCatch(
+    # If the interpolation does not succeed, or if there is not enough data to create
+    # a frequency analysis, we catch this in a tryCatch error block and return an
+    # NA row with the named features
+    {
+      rr = InterpolateNIHR(rr, freqhr = freq, method = "spline")
+      rr = CreateFreqAnalysis(rr)
+      
+      zero_proportion = length(which(rr$HR == 0))/length(rr$HR)
+  
+      if(zero_proportion <= 0.05){
+        size = 300 #width of sliding window used to calculate frequency domain features, set at 1 minute
+        shift = 30 #the step size of the window in seconds
+      }else{
+        message("Using non-default frequency variable window")
+        size = 120 #width of sliding window used to calculate frequency domain features, set at 1 minute
+        shift = 1 #the step size of the window in seconds
+      }
+      
+      rr = CalculatePowerBand(rr, indexFreqAnalysis = 1, size = size, shift = shift)
+      
+      tib = do.call(cbind, rr$FreqAnalysis[[1]][1:7])%>%
+        as_tibble()
+      
+      if(nrow(tib) < 60){
+        warning("Frequency analysis not generated")
+        stop()
+      }else{
+        tib%>%
+        rownames_to_column("Section")%>%
+        mutate(Section = rep(1:6, each = ceiling(n()/6), length.out=n()))%>%
+        group_by(Section)%>%
+        select(Section, LF:LFHF)%>%
+        summarise_at(vars(LF:LFHF), funs(mean, .args = c(na.rm=TRUE)))%>%
+        gather(variable, value, 2:4)%>%
+        unite(data = ., "Section2", c(variable, Section))%>%
+        spread(Section2, value)%>%
+        mutate(Avg_niHR = mean(rr$Beat$niHR, na.rm = TRUE),
+           Start_niHR = rr$Beat$niHR[1],
+           End_niHR = rr$Beat$niHR[nrow(rr$Beat)],
+           Avg_HR = mean(rr$HR[which(rr$HR != 0)], na.rm=TRUE))%>%
+        select(Avg_niHR:Avg_HR, everything())%>%
+        return()
+      }
+      
+        
+    },
+    error=function(c)
+    {
+      cols = c("Avg_niHR", "Start_niHR", "End_niHR", "Avg_HR")
+      cols = c(cols, sort((do.call(paste0, expand.grid(c("HF_","LF_", "LFHF_"), 1:6)))))
+      tempdf = as.data.frame(matrix(nrow = 0, ncol = length(cols)))%>%
+        as_tibble()
+      names(tempdf) = cols
+      tempdf[1,] = NA
+      return(tempdf)
+    }
+    )
+}
+```
+
+And then carry out analysis, using a duration that we specify as the HRV we want to use to be analysed:
+
+```{r}
+DURATION = 60*30 #length of time leading up to the survey/eating episode in seconds; 30 minutes
+TIME_WINDOW_SIZE = 60*10 #width of sliding window used for calculating features, set at ten minutes
+FREQ_WINDOW_SIZE = 60*1 #width of sliding window used to calculate frequency domain features, set at 1 minute
+FREQ_WINDOW_SHIFT = 5 #the step size of the window in seconds
+INTER_FREQ = 4 #the interpolation rate
+
+example_survey = surveys%>%
+  filter(ID == example_ibi_file$ID[1])%>%
+  sample_n(1)
+
+rhrv = example_ibi_file%>%
+  filter(Beat <= example_survey$Event[1] & Beat >= example_survey$Event[1] - DURATION)
+
+dim(rhrv)
+```
+
+The survey we picked is an eating episode, at `r example_survey$Event[1]`. Now we create an analysis:
+
+```{r}
+rhrv2 = MakeHRVObject(rhrv)
+time_analysis = ExtractTimeFeatures(rhrv2, minNumWindows = 2, windowBeatMin = 250)
+time_analysis
+
+freq_analysis = ExtractFreqFeatures(rhrv2, size = FREQ_WINDOW_SIZE, shift = FREQ_WINDOW_SHIFT)
+freq_analysis
+```
+
+And then concatenate these features to create an observation:
+
+```{r}
+cbind(example_survey, time_analysis, freq_analysis)
+```
+
+To create the entire dataset, we loop through the surveys and apply the same procedure:
+
+```{r, eval=FALSE}
+full_data = NULL
+for(s in 1:nrow(surveys)){
+  
+  rhrv = ibi_data%>%
+    filter(ID == surveys$ID[s])%>%
+    filter(Beat <= surveys$Event[s] & Beat >= surveys$Event[s] - DURATION)
+  
+  nrows = rbind(nrows, c(s, nrow(rhrv)))
+  
+  if(nrow(rhrv) < 30){
+    
+    # Sometimes, participants simply do not have enough heartbeat readings to make
+    # rhrv data
+    
+    next
+    
+  }else{
+    
+    rhrv = MakeHRVObject(rhrv)
+    
+    if(nrow(rhrv$Beat) < 3){
+      errors = c(errors, TRUE)
+      next
+    }else{
+      errors = c(errors, FALSE)
+      full_data = data.frame(surveys[s,], ExtractTimeFeatures(rhrv, time_window_size = 60*5), ExtractFreqFeatures(rhrv, size = 60*0.5))%>%
+        rbind(full_data, .)
+    }
+  }
+}
+```
+
+With this full data set, we can then get summary statistics out or run machine learning algorithms.
+
+```{r, eval=FALSE}
+head(full_data)
+```
+
+We can also create a filter so that each episode has a matching control:
+
+```{r, eval=FALSE}
+SystemmaticFilter = function(dff){
+  require(lubridate)
+  systemmatic = dff%>%
+    mutate(day = wday(when, label = TRUE),
+           hour = hour(when))
+  
+  eps = systemmatic%>%
+    filter(Y == "Episode")
+  
+  cont = systemmatic%>%
+    filter(Y != "Episode")
+  
+  nhits = 0
+  final_controls = NULL
+  
+  for(row in 1:nrow(eps)){
+    
+    ddf = cont%>%
+      filter((hour > eps$hour[row] - 1 | hour < eps$hour[row] + 1) & day == eps$day[row])%>%
+      distinct()%>%
+      sample_n(1)
+    
+    final_controls = rbind(final_controls, ddf)
+  }
+  
+  systemmatic = rbind(eps, final_controls)%>%
+    select(-day, -hour)
+  
+  return(systemmatic)
+}
+```
+
+
+

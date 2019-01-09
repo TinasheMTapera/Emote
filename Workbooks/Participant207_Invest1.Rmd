@@ -1,0 +1,140 @@
+---
+title: "Participant207"
+output: html_notebook
+---
+
+# A Closer Look at Participant 207's Data
+
+## IBI
+
+The surveys that 207 had sufficient data for either time or frequency domain:
+```{r}
+#index of 207's surveys
+idx_time = features_output%>%
+  filter(ID == 207)%>%
+  filter_at(vars(Y:HRVi), all_vars(complete.cases(.)))%>%
+  select(index)%>%
+  .$index
+
+idx_freq = features_output%>%
+  filter(ID == 207)%>%
+  filter_at(vars(Avg_niHR:LFHF_6), all_vars(complete.cases(.)))%>%
+  select(index)%>%
+  .$index
+
+features_output%>%
+  filter(index %in% idx_time | index %in% idx_freq)
+```
+
+26 surveys, 9 of which were episodes. What is the IBI?
+
+```{r}
+ibi_outputs%>%
+  left_join(features_output, by="index")%>%
+  filter_at(vars(Y:HRVi), all_vars(complete.cases(.)))%>%
+  select(ID, ibi_mean:ibi_max)%>%
+  mutate(ID = ifelse(ID == 207, "207", "Other"))%>%
+  gather("key", "value", 2:4)%>%
+  ggplot(aes(y=value, x=key))+
+  geom_boxplot(aes(fill = ID), alpha = 0.5, outlier.colour = "red", outlier.size = 5)+
+  #geom_dotplot(binaxis = "y", stackdir = "center", alpha = 0.5)+
+  theme_minimal()+
+  labs(title = "IBI Values for All Completed Surveys", 
+       subtitle = "Compares Participant 207 vs. All Other Participants")
+```
+
+207 seems to have lowered IBI values for all of their complete data.
+
+## BMI
+
+```{r}
+library(foreign)
+qual = read.spss("/Volumes/psychology/Shared/WEACT/EMOTE/Data/EmoteMASTERdatabase.sav", to.data.frame = T)
+
+qual%>%
+  select(ID, BMIA1)%>%
+  left_join(features_output, by="ID")%>%
+  filter_at(vars(Y:HRVi), all_vars(complete.cases(.)))%>%
+  filter(complete.cases(.))%>%
+  select(ID, BMIA1)%>%
+  unique()%>%
+  mutate(ID = as.factor(ID))%>%
+  ggplot(aes(x=ID, y=BMIA1))+
+  geom_col()+
+  theme_minimal()+
+  labs(title = "Participants' BMI at A1")
+```
+
+Participant 207 doesn't have abnormally low or high BMI.
+
+## Survey Time
+
+```{r}
+require(lubridate)
+require(viridis)
+ibi_outputs%>%
+  left_join(features_output, by="index")%>%
+  filter_at(vars(Y:HRVi), all_vars(complete.cases(.)))%>%
+  select(ID, when)%>%
+  mutate(ID = ifelse(ID == 207, "207", "Other"),
+         day = wday(when, label = T))%>%
+  ggplot(aes(x = day, fill=ID))+
+  geom_bar(aes(group=ID), stat="count", position = "stack")+
+  theme_minimal()+
+  labs(title="Number of Completed Surveys By Day of Week and Participant")+
+  scale_fill_viridis(discrete=TRUE)
+
+ibi_outputs%>%
+  left_join(features_output, by="index")%>%
+  filter_at(vars(Y:HRVi), all_vars(complete.cases(.)))%>%
+  select(ID, when)%>%
+  mutate(ID = ifelse(ID == 207, "207", "Other"),
+         hour = as.factor(hour(when)))%>%
+  ggplot(aes(x = hour, fill=ID))+
+  geom_bar(aes(group=ID), stat="count", position = "stack")+
+  theme_minimal()+
+  labs(title="Number of Completed Surveys By Hour of Day and Participant")+
+  scale_fill_viridis(discrete=TRUE)
+```
+
+Participant 207 doesn't seem to be completing their surveys differently to anybody else. They have a large proportion of Monday surveys but not extraneously so.
+
+# Time Domain Features
+
+```{r}
+ibi_outputs%>%
+  left_join(features_output, by="index")%>%
+  filter_at(vars(Y:HRVi), all_vars(complete.cases(.)))%>%
+  mutate(ID = ifelse(ID == 207, "207", "Other"))%>%
+  select(ID, SDNN:HRVi)%>%
+  mutate_at(.vars = vars(SDNN:HRVi), funs(scale))%>%
+  gather("variable", "value", SDNN:HRVi)%>%
+  ggplot(aes(value, color = variable))+
+  geom_density(alpha = 0.5)+
+  facet_grid(rows=vars(ID))+
+  theme_minimal()+
+  scale_color_viridis(discrete = TRUE)+
+  labs(title = "Density Plots of Z Score Variables for All Surveys",
+       subtitle = "Compares Participant 207 Against All Others")
+```
+
+There doesnt seem to be much difference here either.
+
+## Heart Rate
+
+```{r}
+ibi_outputs%>%
+  left_join(features_output, by="index")%>%
+  filter_at(vars(Avg_niHR:Avg_HR), all_vars(complete.cases(.)))%>%
+  select(ID, Avg_niHR:Avg_HR)%>%
+  mutate(ID = ifelse(ID == 207, "207", "Other"))%>%
+  gather("key", "value", 2:5)%>%
+  ggplot(aes(y=value, x=key))+
+  geom_boxplot(aes(fill = ID), alpha = 0.5, outlier.colour = "red", outlier.size = 5)+
+  #geom_dotplot(binaxis = "y", stackdir = "center", alpha = 0.5)+
+  theme_minimal()+
+  labs(title = "Heart Rate for All Completed Surveys", 
+       subtitle = "Compares Participant 207 vs. All Other Participants")
+```
+
+Participant seems to have a more elevated heart rate as compared to the rest of the data.

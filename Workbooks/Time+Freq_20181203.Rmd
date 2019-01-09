@@ -1,0 +1,729 @@
+---
+title: "Time & Frequency Domain ML"
+output: html_notebook
+---
+
+Here we combine time and frequency domain to create ensembled models for each observation. We use two approaches:
+
+1. Row-wise ensembling in frequency domain:
+  - For each 5 minute window, build an ensemble of classifiers for rows
+  - Match rows for each 5 minute window, creating a sparse ensemble classifier with a prediction per row where not every window has a prediction
+  
+2. Row-wise ensembling in time + frequency domain:
+  - Same as 2) but also including the time domain prediction per row
+
+```{r}
+library(tidyverse, quietly = T)
+library(caret, quietly = T)
+library(DMwR, quietly = T)
+library(ROSE, quietly = T)
+library(viridis, quietly = T)
+library(DAAG, quietly = T)
+set.seed(4)
+
+#save participants who qualify with both episode and control
+pp = c(201, 202, 207, 214, 215, 217, 218, 219, 226, 228)
+
+features_output = read.csv("~/GDriveDocs/Quantitative Psychology & Statistics Lab/Emote/DataOutputs/data_out_20181113.csv")%>%
+  as.tibble()
+```
+
+# Row Wise in Frequency Domain
+
+Set up of the data:
+
+* Use only participants with both episodes and controls
+* Filter out participants' controls with stress > 4
+* Floor and ceiling Frequency domain by literature standard
+* Balance data by undersampling majority within participant
+
+```{r}
+mydat=features_output%>%
+  filter(ID %in% pp)%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Event, Y, Avg_niHR:LFHF_6)%>%
+  rename(Class = Y)%>%
+  mutate(Class = as.factor(Class))%>%
+  mutate_at(., .funs = funs(ifelse(. > 3630, 3630, 
+                                   ifelse(. < 80, 80, .))),
+            .vars = vars(matches("^HF_.*")))%>%
+  mutate_at(., .funs = funs(ifelse(. > 1010, 101,
+                                   ifelse(. < 190, 190, .))), 
+            .vars = vars(matches("^LF_.*")))%>%
+  mutate_at(., .funs = funs(ifelse(. > 12, 12,
+                                   ifelse(. < 1, 1, .))), 
+            .vars = vars(matches("LFHF_.*")))
+
+windowed_data = list()
+
+for(x in 1:6){
+  
+  windowed_data[[x]] = mydat%>%
+    select(ID, Event, Class, contains(as.character(x)))%>%
+    filter(complete.cases(.))%>%
+    group_by(ID, Class)%>%
+    nest()%>%
+    mutate(rows = purrr::map(data, nrow))%>%
+    unnest(rows)%>%
+    group_by(ID)%>%
+    mutate(rows = min(rows))%>%
+    ungroup()%>%
+    mutate(samp = purrr::map2(data, rows, sample_n))%>%
+    select(-data, -rows, -ID)%>%
+    unnest(samp)
+}
+
+windowed_data[[7]] = mydat%>%
+  select(ID, Event, Class, Avg_niHR, End_niHR, Avg_HR, HF_4, LF_3)%>%
+  filter(complete.cases(.))%>%
+  group_by(ID, Class)%>%
+  nest()%>%
+  mutate(rows = purrr::map(data, nrow))%>%
+  unnest(rows)%>%
+  group_by(ID)%>%
+  mutate(rows = min(rows))%>%
+  ungroup()%>%
+  mutate(samp = purrr::map2(data, rows, sample_n))%>%
+  select(-data, -rows, -ID)%>%
+  unnest(samp)
+```
+
+Get fold indeces for validation:
+
+```{r}
+indeces = lapply(windowed_data, function(x) createFolds(y = x$Class, k=4, list=TRUE, returnTrain = FALSE))
+```
+
+Model fitting functions:
+
+```{r, include=FALSE, echo=FALSE}
+fitGLM = function(window, folds){
+  
+  # use a window dataset and list of folds run caret glm and
+  # return a list [model fit results, predictions]
+  
+  summaries = list()
+  predictions = list()
+  
+  for(fold in 1:length(folds)){
+    
+    model = train(Class ~ .,
+            method = "glm",
+            family = binomial,
+            data = window %>%
+              slice(-folds[[fold]]) %>%
+              select(-Event))
+    
+    summaries[[fold]] = summary(model) %>%
+      .$coefficients%>%
+      data.frame()%>%
+      as.tibble()%>%
+      rownames_to_column(var = "Variable")%>%
+      rename(P_Value = Pr...z..,
+             Z_Value = z.value,
+             Std_Error = Std..Error) %>%
+      mutate(Significant = ifelse(P_Value < 0.05, "Significant", "Not Significant"),
+             Fold = fold)
+    
+    predictions[[fold]] = predict(model, 
+                                  newdata = window %>%
+                                    slice(folds[[fold]]) %>%
+                                    select(-Event),
+                                  type = "raw")%>%
+      data.frame(
+        Event = window %>%
+          slice(folds[[fold]]) %>% 
+          .$Event,
+        pred = ., 
+        obs = window %>%
+          slice(folds[[fold]]) %>%
+          .$Class)
+  }
+  
+  return(list(summaries = summaries, predictions = predictions))
+  
+}
+
+fitRF = function(window, folds){
+  
+  # use a window dataset and list of folds to run caret random forest and
+  # return a list [model fit results, predictions]
+  
+  summaries = list()
+  predictions = list()
+  
+  for(fold in 1:length(folds)){
+    
+    tc = trainControl("cv", 
+                      number = 10, 
+                      savePredictions=T, 
+                      search = "random",
+                      summaryFunction = twoClassSummary,
+                      classProbs = T)
+    model = train(Class~., 
+                  data = window %>%
+                    slice(-folds[[fold]]) %>%
+                    select(-Event), 
+                  method="rf", 
+                  metric="ROC", 
+                  tuneLength=15, 
+                  trControl=tc)
+  
+  summaries[[fold]] = randomForest::importance(model$finalModel)%>%
+    as.data.frame()%>%
+    rownames_to_column("Variable")%>%
+    arrange(MeanDecreaseGini)
+  
+  predictions[[fold]] = predict(model, 
+      newdata = window %>%
+        slice(folds[[fold]]) %>%
+        select(-Event),
+      type = "raw")%>%
+      data.frame(Event = window %>%
+                   slice(folds[[fold]]) %>% 
+                   .$Event,
+                 pred = ., 
+                 obs = window %>%
+                   slice(folds[[fold]]) %>%
+                   .$Class)
+  
+  }
+  
+  return(list(summaries = summaries, predictions = predictions))
+  
+}
+fitXG = function(window, folds){
+  
+  # use a window dataset and list of folds to run caret xgboost and
+  # return a list [model fit results, predictions]
+  
+  summaries = list()
+  predictions = list()
+  for(fold in 1:4){
+    tc = trainControl("cv", 10, 
+                        savePredictions=T, 
+                        search = "random",
+                        summaryFunction = twoClassSummary,
+                        classProbs = T) 
+      
+    model = train(Class ~.,
+                 method = "xgbTree",
+                 data=window %>%
+                    slice(-folds[[fold]]) %>%
+                    select(-Event),
+                 trControl = tc,
+                 metric = "ROC",
+                 tuneLength = 3)
+    
+    predictions[[fold]] = predict(model, 
+      newdata = window %>%
+        slice(folds[[fold]]) %>%
+        select(-Event),
+      type = "raw")%>%
+      data.frame(Event = window %>%
+                   slice(folds[[fold]]) %>% 
+                   .$Event,
+                 pred = ., 
+                 obs = window %>%
+                   slice(folds[[fold]]) %>%
+                   .$Class)
+    }
+  
+  return(list(summaries = summaries, predictions = predictions))
+}
+fitSVM = function(window, folds){
+  
+  # use a window dataset and list of folds to run caret SVM and
+  # return a list [model fit results, predictions]
+  summaries = list()
+  predictions = list()  
+  
+  for(fold in 1:length(folds)){
+    tc = trainControl("cv", 15, 
+                      savePredictions=T, 
+                      summaryFunction = twoClassSummary,
+                      classProbs = T,
+                      search = "random")
+    
+    model = train(Class ~.,
+                 method = "svmLinear",
+                 data=window %>%
+                    slice(-folds[[fold]]) %>%
+                    select(-Event),
+                 trControl = tc,
+                 tuneLength = 3,
+                 metric = "ROC")
+    
+    predictions[[fold]] = predict(model, 
+      newdata = window %>%
+        slice(folds[[fold]]) %>%
+        select(-Event),
+      type = "raw")%>%
+      data.frame(Event = window %>%
+                   slice(folds[[fold]]) %>% 
+                   .$Event,
+                 pred = ., 
+                 obs = window %>%
+                   slice(folds[[fold]]) %>%
+                   .$Class)
+  }
+  
+  return(list(summaries = summaries, predictions = predictions))
+}
+
+fitNN = function(window, folds){
+  
+  # use a window dataset and list of folds to run caret NN and
+  # return a list [model fit results, predictions]
+  summaries = list()
+  predictions = list() 
+  
+  for(fold in 1:4){
+    
+    tc = trainControl(method = 'cv', number = 50, 
+                    classProbs = TRUE, 
+                    summaryFunction = twoClassSummary, 
+                    savePredictions = TRUE,
+                    search = "random")
+  
+    model = train(Class ~.,
+                 method = "nnet",
+                 data=window %>%
+                    slice(-folds[[fold]]) %>%
+                    select(-Event),
+                 trControl = tc,
+                 tuneLength = 5,
+                 metric = "ROC")
+    
+    predictions[[fold]] = predict(model, 
+      newdata = window %>%
+        slice(folds[[fold]]) %>%
+        select(-Event),
+      type = "raw")%>%
+      data.frame(Event = window %>%
+                   slice(folds[[fold]]) %>% 
+                   .$Event,
+                 pred = ., 
+                 obs = window %>%
+                   slice(folds[[fold]]) %>%
+                   .$Class)
+  }
+  
+  return(list(summaries = summaries, predictions = predictions))
+  
+}
+
+```
+
+Fit models:
+
+```{r}
+glms = map2(.x = windowed_data, .y= indeces, .f = fitGLM)
+rfs = map2(.x = windowed_data, .y= indeces, .f = fitRF)
+xgs = map2(.x = windowed_data, .y= indeces, .f = fitXG)
+svms = map2(.x = windowed_data, .y= indeces, .f = fitSVM)
+nns = map2(.x = windowed_data, .y= indeces, .f = fitNN)
+```
+
+
+Model evaluation functions:
+
+```{r}
+ExtractConfusionMatrix = function(df){
+  
+  df%>%
+    table()%>%
+    confusionMatrix(positive = "Episode")%>%
+    .$byClass%>%
+    t()%>%
+    as.tibble()%>%
+    return()
+}
+
+```
+
+Gather window predictions:
+```{r}
+window1 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[1]]$predictions))
+window2 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[2]]$predictions))
+window3 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[3]]$predictions))
+window4 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[4]]$predictions))
+window5 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[5]]$predictions))
+window6 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[6]]$predictions))
+window7 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[7]]$predictions))
+```
+
+Get max vote for each window's algorithm:
+```{r}
+window1_results = window1 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window1 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window2_results = window2 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window2 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window3_results = window3 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window3 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window4_results = window4 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window4 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window5_results = window5 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window5 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window6_results = window6 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window6 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window7_results = window7 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window7 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+```
+
+Gather all the predictions:
+```{r}
+all_predictions = do.call(rbind, lapply(sprintf("window%d_results", 1:7), get))
+```
+
+Get the final prediction for the observation:
+```{r}
+final_predictions = all_predictions %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  left_join(all_predictions %>% select(Event, obs), by="Event") %>%
+  unique()
+```
+
+Get the performance:
+```{r}
+ExtractConfusionMatrix(final_predictions %>% ungroup(Event) %>% select(-Event))
+```
+
+# Row-wise in Time + Freqeuncy Domain
+
+```{r}
+mydat=features_output%>%
+  filter(ID %in% pp)%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Event, Y, SDNN:HRVi, Avg_niHR:LFHF_6)%>%
+  rename(Class = Y)%>%
+  mutate(Class = as.factor(Class))%>%
+  mutate_at(., .funs = funs(ifelse(. > 3630, 3630, 
+                                   ifelse(. < 80, 80, .))),
+            .vars = vars(matches("^HF_.*")))%>%
+  mutate_at(., .funs = funs(ifelse(. > 1010, 101,
+                                   ifelse(. < 190, 190, .))), 
+            .vars = vars(matches("^LF_.*")))%>%
+  mutate_at(., .funs = funs(ifelse(. > 12, 12,
+                                   ifelse(. < 1, 1, .))), 
+            .vars = vars(matches("LFHF_.*")))
+
+windowed_data = list()
+
+for(x in 1:6){
+  
+  windowed_data[[x]] = mydat%>%
+    select(ID, Event, Class, contains(as.character(x)))%>%
+    filter(complete.cases(.))%>%
+    group_by(ID, Class)%>%
+    nest()%>%
+    mutate(rows = purrr::map(data, nrow))%>%
+    unnest(rows)%>%
+    group_by(ID)%>%
+    mutate(rows = min(rows))%>%
+    ungroup()%>%
+    mutate(samp = purrr::map2(data, rows, sample_n))%>%
+    select(-data, -rows, -ID)%>%
+    unnest(samp)
+}
+
+windowed_data[[7]] = mydat%>%
+  select(ID, Event, Class, Avg_niHR, End_niHR, Avg_HR, HF_4, LF_3)%>%
+  filter(complete.cases(.))%>%
+  group_by(ID, Class)%>%
+  nest()%>%
+  mutate(rows = purrr::map(data, nrow))%>%
+  unnest(rows)%>%
+  group_by(ID)%>%
+  mutate(rows = min(rows))%>%
+  ungroup()%>%
+  mutate(samp = purrr::map2(data, rows, sample_n))%>%
+  select(-data, -rows, -ID)%>%
+  unnest(samp)
+
+# adding the time domain
+windowed_data[[8]] = mydat%>%
+  select(ID, Event, Class, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  group_by(ID, Class)%>%
+  nest()%>%
+  mutate(rows = purrr::map(data, nrow))%>%
+  unnest(rows)%>%
+  group_by(ID)%>%
+  mutate(rows = min(rows))%>%
+  ungroup()%>%
+  mutate(samp = purrr::map2(data, rows, sample_n))%>%
+  select(-data, -rows, -ID)%>%
+  unnest(samp)
+
+
+```
+
+Get fold indeces for validation:
+
+```{r}
+indeces = lapply(windowed_data, function(x) createFolds(y = x$Class, k=4, list=TRUE, returnTrain = FALSE))
+```
+
+Fit models:
+
+```{r}
+glms = map2(.x = windowed_data, .y= indeces, .f = fitGLM)
+rfs = map2(.x = windowed_data, .y= indeces, .f = fitRF)
+xgs = map2(.x = windowed_data, .y= indeces, .f = fitXG)
+svms = map2(.x = windowed_data, .y= indeces, .f = fitSVM)
+nns = map2(.x = windowed_data, .y= indeces, .f = fitNN)
+```
+
+Gather window predictions:
+```{r}
+window1 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[1]]$predictions))
+window2 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[2]]$predictions))
+window3 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[3]]$predictions))
+window4 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[4]]$predictions))
+window5 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[5]]$predictions))
+window6 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[6]]$predictions))
+window7 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[7]]$predictions))
+window8 = lapply(list(glms, rfs, xgs, svms, nns), function(x) return(x[[8]]$predictions))
+```
+
+Get max vote for each window's algorithm:
+```{r}
+window1_results = window1 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window1 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window2_results = window2 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window2 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window3_results = window3 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window3 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window4_results = window4 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window4 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window5_results = window5 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window5 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window6_results = window6 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window6 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window7_results = window7 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window7 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+
+window8_results = window8 %>%
+  flatten() %>%
+  reduce(rbind) %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  inner_join(window8 %>%
+               flatten() %>%
+               reduce(rbind) %>%
+               select(Event, obs) %>%
+               unique(), by="Event")
+```
+
+Gather all the predictions:
+```{r}
+all_predictions = do.call(rbind, lapply(sprintf("window%d_results", 1:8), get))
+```
+
+Get the final prediction for the observation:
+```{r}
+final_predictions = all_predictions %>%
+  group_by(Event, pred) %>%
+  count() %>%
+  arrange(Event, -n) %>%
+  group_by(Event) %>%
+  filter(n == max(n)) %>%
+  select(-n) %>%
+  left_join(all_predictions %>% select(Event, obs), by="Event") %>%
+  unique()
+```
+
+Get the performance:
+```{r}
+ExtractConfusionMatrix(final_predictions %>% ungroup(Event) %>% select(-Event))
+```

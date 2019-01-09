@@ -1,0 +1,126 @@
+---
+title: "Creating Full Data Set"
+output: html_notebook
+---
+
+The following loop creates a full dataset for use in ML. Assert that `ibi_data` and `surveys` exist from `PipelineDemo.Rmd`
+
+```{r, echo=FALSE, message=TRUE, warning=FALSE, include=FALSE}
+DURATION = 60*30 # the length of the observation in seconds
+
+ibi_outputs = data.frame(threshold = NULL, duration = NULL, index = NULL, ibi_mean = NULL, ibi_min = NULL, ibi_max = NULL) # this variable tracks the raw IBI input statistics
+features_output = data.frame() # this variable is the final output
+
+min_windows = c(2) # this vector lists is the minimum number of complete sliding windows necessary to create an observation
+thresholds = c(100) # this vector lists the minimum number of beats necessary to add a complete sliding window to the observation
+
+# loop through the parameters
+for(th in 1:length(thresholds)){
+  THRESHOLD = thresholds[th]
+  # loop through the parameters  
+  for(w in 1:length(min_windows)){
+    MIN_WINDOWS = min_windows[w]
+    
+    # loop through the input data, one survey at a time
+    for(i in 1:nrow(surveys)){
+    
+      # take the row
+      example_survey = surveys[i,]
+      
+      # find the beats within the correct amount of time
+      rhrv = ibi_data%>%
+        filter(ID == example_survey$ID[1])%>%
+        filter(Beat <= example_survey$Event[1] & Beat >= example_survey$Event[1] - DURATION)
+      
+      # if this observation doesn't have enough IBI values, process with NA
+      if(nrow(rhrv) < 2){
+          
+        ibi_outputs = data.frame(threshold = THRESHOLD, winds = MIN_WINDOWS, index = i, ibi_mean = NA, ibi_min = NA, ibi_max = NA)%>%
+          rbind(ibi_outputs)
+        next
+      
+      }else{
+        
+        # Use our modified function to preprocess
+        rhrv2 = MakeHRVObject(rhrv)
+        
+        # record the IBI values in the observation
+        ibi_outputs = data.frame(threshold = THRESHOLD, 
+                                 winds = MIN_WINDOWS, index = i, 
+                                 ibi_mean = mean(rhrv2$Beat$RR),
+                                 ibi_min = min(rhrv2$Beat$RR), 
+                                 ibi_max = max(rhrv2$Beat$RR))%>%
+          rbind(ibi_outputs)
+        
+        # ensure the minimum number of beats is available for processing
+        # admittedly, this is made moot by having a threshold above
+        if(nrow(rhrv2$Beat) < 60){
+          
+          time_analysis = data.frame(threshold = THRESHOLD, 
+                                     winds = MIN_WINDOWS, 
+                                     index = i,
+                                     SDNN = NA,
+                                     SDANN = NA,
+                                     SDNNIDX = NA,
+                                     pNN50 = NA,
+                                     SDSD = NA,
+                                     rMSSD = NA,
+                                     IRRR = NA,
+                                     MADRR = NA,
+                                     TINN = NA,
+                                     HRVi = NA)
+          
+          freq_analysis = data.frame(Avg_niHR = NA,
+                                     Start_niHR = NA,
+                                     End_niHR = NA,
+                                     Avg_HR = NA,
+                                     HF_1 = NA,
+                                     HF_2 = NA,
+                                     HF_3 = NA,
+                                     HF_4 = NA,
+                                     HF_5 = NA,
+                                     HF_6 = NA,
+                                     LF_1 = NA,
+                                     LF_2 = NA,
+                                     LF_3 = NA,
+                                     LF_4 = NA,
+                                     LF_5 = NA,
+                                     LF_6 = NA,
+                                     LFHF_1 = NA,
+                                     LFHF_2 = NA,
+                                     LFHF_3 = NA,
+                                     LFHF_4 = NA,
+                                     LFHF_5 = NA,
+                                     LFHF_6 = NA)
+          
+        }else{
+          # extract time variables
+          time_analysis = cbind(threshold = THRESHOLD, winds = MIN_WINDOWS, index = i,
+                                ExtractTimeFeatures(rhrv2, time_window_size = 300,
+                                                    minNumWindows = MIN_WINDOWS,
+                                                    windowBeatMin = THRESHOLD))
+          # extract frequency variables
+          # NOTE: the mininum parameters for frequency variables are defined
+          # both in the function we modify, as well as by using ceiling and floor
+          # truncation in our ML workbooks
+          freq_analysis = ExtractFreqFeatures(rhrv2)
+          
+        }
+        
+        # bind
+        features_output = rbind(features_output, cbind(example_survey,
+                                                      time_analysis,
+                                                      freq_analysis))
+
+      }
+    }
+  }
+}
+```
+
+```{r}
+# output
+features_output%>%
+  write_csv("../DataOutputs/data_out_20181113.csv")
+```
+

@@ -1,0 +1,526 @@
+---
+title: "Model_Updated_Surveys"
+output: html_notebook
+---
+
+Fitting the model with the updated surveys:
+
+```{r libraries}
+library(tidyverse)
+library(RHRV)
+library(data.table)
+library(lubridate)
+library(viridis)
+library(readxl)
+library(mice)
+library(viridis)
+
+TZ = "America/New_York"
+Sys.setenv(TZ="America/New_York")
+```
+
+
+```{r read in surveys}
+surveys = read_excel("./Participants/UpdatedSurveys_180713.xlsx")
+surveys = surveys%>%
+  mutate(when = ymd_hms(when),
+         EmotionalEatingEpisodes = factor(EmotionalEatingEpisodes),
+         Event = ymd_hms(Event))
+
+head(surveys)
+```
+
+```{r clean emotions in surveys}
+negative = ifelse((surveys$Sad == 1 | 
+                    surveys$Distressed == 1 | 
+                    surveys$Ashamed == 1 | 
+                    surveys$Lonely == 1 | 
+                    surveys$Anxious == 1 | 
+                    surveys$Guilt == 1 | 
+                    surveys$Nervous == 1), TRUE, FALSE)
+
+none = ifelse(surveys$Calm == 0 &
+              surveys$Sad == 0 & 
+              surveys$Distressed == 0 &
+              surveys$Happy == 0 &
+              surveys$Angry == 0 &
+              surveys$Irritable == 0 &
+              surveys$Ashamed == 0 & 
+              surveys$Lonely == 0 &
+              surveys$Disgusted == 0 &
+              surveys$Bored == 0 &
+              surveys$Anxious == 0 & 
+              surveys$Guilt == 0 & 
+              surveys$Nervous == 0 &
+              surveys$Confident == 0, 
+              TRUE, FALSE)
+
+happy = ifelse(surveys$Happy == 1, TRUE, FALSE)
+
+calm_bored = ifelse((surveys$Calm == 1 |
+                       surveys$Bored == 1), TRUE, FALSE)
+
+angry_irritable_disgust = ifelse((surveys$Angry == 1 |
+                                   surveys$Irritable == 1 |
+                                   surveys$Disgusted == 1), TRUE, FALSE)
+
+affect = ifelse(none, "None_Reported", 
+                ifelse(happy, ifelse(negative, "Happy_Negative", "Happy_Positive"), 
+                       ifelse(calm_bored, ifelse(negative, "Calm_Negative", "Calm_Positive"),
+                       ifelse(angry_irritable_disgust, "Angry/Irritable/Disgust", "Negative"))))
+
+surveys$Affect = factor(affect)
+
+
+pre = c()
+for(x in 1:nrow(surveys)){
+  pre[x] = ifelse(surveys$EmotionalEatingEpisodes[x+1] != 2,
+                  "Pre-Event Survey", "Control Survey")
+}
+
+pre[which(surveys$EmotionalEatingEpisodes != 2 & pre == "Pre-Event Survey")] = "Event Survey"
+surveys$Pre = factor(pre)
+```
+
+
+```{r read in ibi data}
+participants_csv_list = list.files("./watch_data")%>%
+  grep(pattern = "*.csv", x=., value = TRUE)
+
+participants = list()
+
+for(x in 1:length(participants_csv_list)){
+  #print(file.exists(paste0("./watch_data/", participants_csv_list[x])))
+  participants[[x]] = fread(paste0("./watch_data/", participants_csv_list[x]))%>%
+    as_tibble()
+  
+  participants[[x]] = participants[[x]]%>%
+    mutate(Beat = as_datetime(Beat_Time+Session_Start_GMT, tz = "GMT"),
+           Session_Start_GMT = as_datetime(Session_Start_GMT),
+           Beat2 = as.numeric(Beat) - as.numeric(Session_Start_GMT[1]),
+           ID = as.numeric(gsub(pattern = "\\D", replacement =  "", x = participants_csv_list[x])))%>%
+    arrange(Beat)
+}
+
+ibi_data = bind_rows(participants)
+
+head(ibi_data)
+```
+
+```{r verify ibi and surveys}
+ibi_ids = ibi_data%>%
+  select(ID)%>%
+  unique()%>%
+  pull()
+
+survey_ids = surveys%>%
+  select(ID)%>%
+  unique()%>%
+  pull()
+
+ibi_ids %in% survey_ids
+```
+
+
+```{r how to make rhrv object}
+example_df = ibi_data%>%
+  filter(ID == 201)%>%
+  arrange(Session_Start_GMT, Beat2)
+
+example_EE = surveys%>%
+  filter(ID == 201)%>%
+  filter(EmotionalEatingEpisodes != 2)%>%
+  sample_n(1)
+
+example_control = surveys%>%
+  filter(ID == 201)%>%
+  filter(EmotionalEatingEpisodes == 2)%>%
+  sample_n(1)
+
+DURATION = 60*30 #length of the event in seconds (30 minutes)
+
+subset_df = example_df%>%
+  filter(Beat <= example_control$Event & Beat >= example_control$Event - DURATION)
+
+subset_df%>%
+  select(Session_Start_GMT)%>%
+  unique()
+
+SIZE = 60*10 #width of the sliding window in seconds
+INTERVAL = 1 #width of bins used to create histogram in milliseconds
+
+rr = CreateHRVData()
+rr = SetVerbose(rr, FALSE )
+rr = LoadBeatVector(rr, subset_df$Beat2, datetime = format(min(subset_df$Session_Start_GMT), "%d/%m/%Y %H:%M:%S"))
+rr = BuildNIHR(rr)
+rr = FilterNIHR(rr)
+rr = CreateTimeAnalysis(rr, size = SIZE)
+rr = InterpolateNIHR(rr, freqhr = 4)
+rr = CreateFreqAnalysis(rr)
+rr = CalculatePowerBand(rr,indexFreqAnalysis = length(rr$FreqAnalysis), type = "fourier",  size = 60, shift = 5)
+
+rr$TimeAnalysis[[1]][2:11]%>%
+  as_tibble()
+
+# do.call(cbind, rr$FreqAnalysis[[1]][1:7])%>%
+#   as_tibble()%>%
+#   select(-Time)%>%
+#   filter(complete.cases(.))%>%
+#   mutate_all(funs(max, min, sd, mean), na.rm=TRUE)%>%
+#   select(matches(".*_.*"))%>%
+#   slice(1)
+
+ExtractFreqFeatures(subset_df)
+
+```
+
+```{r how to loop over surveys and make rhrv features}
+id = 220
+SIZE = 60*5 #width of the sliding window in seconds (5minutes)
+FREQ = 10 #sampling frequency
+INTERVAL = 7.8 #width of bins used to create histogram in milliseconds
+DURATION = 60*30 #length of the event in seconds (15 minutes)
+
+participant_df = ibi_data%>%
+  filter(ID == id)%>%
+  arrange(Session_Start_GMT, Beat2)
+
+participant_surveys = surveys%>%
+  filter(ID == id)%>%
+  filter(!is.na(EmotionalEatingEpisodes))
+
+final_data_df = NULL
+
+for(i in 1:nrow(participant_surveys)){
+  
+  subset_df = participant_df%>%
+    filter(Beat <= participant_surveys$Event[i] & Beat >= participant_surveys$Event[i] - DURATION)
+  
+  if(nrow(subset_df) <= 5){
+    next
+  }else{
+    rr = CreateHRVData()
+    rr = SetVerbose(rr, FALSE )
+    rr = LoadBeatVector(rr, subset_df$Beat2, datetime = format(min(subset_df$Session_Start_GMT),"%d/%m/%Y %H:%M:%S"))
+    rr = BuildNIHR(rr)
+    rr = FilterNIHR(rr)
+    rr = InterpolateNIHR(rr, method = "linear", freqhr = 10)
+    rr = CreateTimeAnalysis(rr, size = SIZE)
+    rr = CreateFreqAnalysis(rr)
+    rr = CalculatePowerBand(rr, indexFreqAnalysis = 1, size = 300, shift = 30)
+    
+    time_analysis = unlist(rr$TimeAnalysis[[1]])%>%
+      t()%>%
+      as_tibble()%>%
+      select(-size)
+    
+    # if(is.na(all(rr$FreqAnalysis[[1]]$HRV == "NaN")) | is.na(rr$FreqAnalysis[[1]]$HRV)){
+    #   cols = names(rr$FreqAnalysis[[1]])[1:6]
+    #   cols = rep.int(cols,4)
+    #   cols2 = rep(c("_max", "_min", "_sd", "_mean"), each = 6)
+    #   freq_analysis = as.data.frame(matrix(nrow = 0, ncol = 24))%>%
+    #     as_tibble()
+    #   names(freq_analysis) = paste0(cols, cols2)
+    #   freq_analysis[1,] = NA
+    # }else{
+    # freq_analysis = do.call(cbind, rr$FreqAnalysis[[1]][1:7])%>%
+    #   as_tibble()%>%
+    #   select(-Time)%>%
+    #   filter(complete.cases(.))%>%
+    #   mutate_all(funs(max, min, sd, mean), na.rm=TRUE)%>%
+    #   select(matches(".*_.*"))%>%
+    #   slice(1)
+    # }
+    
+    
+    
+    final_data_df = rbind(final_data_df, cbind(participant_surveys[i,], time_analysis))
+  }
+}
+```
+```{r time feature extract}
+ExtractTimeFeatures = function(subdf, window_size=60*10){
+  
+  rr = CreateHRVData()
+  rr = SetVerbose(rr, FALSE )
+  rr = LoadBeatVector(rr, subdf$Beat2, datetime = format(min(subdf$Session_Start_GMT),"%d/%m/%Y %H:%M:%S"))
+  rr = BuildNIHR(rr)
+  rr = FilterNIHR(rr)
+  rr = CreateTimeAnalysis(rr, size = window_size)
+  
+  time_features = unlist(rr$TimeAnalysis[[1]])%>%
+    t()%>%
+    as_tibble()%>%
+    select(-size)
+  
+  return(time_features)
+}
+```
+
+```{r freq feature extract}
+ExtractFreqFeatures = function(subdf, freq=4, size=10, shift=2){
+  
+  rr = CreateHRVData()
+  rr = SetVerbose(rr, FALSE )
+  rr = LoadBeatVector(rr, subdf$Beat2, datetime = format(min(subdf$Session_Start_GMT),"%d/%m/%Y %H:%M:%S"))
+  rr = BuildNIHR(rr)
+  rr = FilterNIHR(rr)
+  tryCatch(
+    {
+      rr = InterpolateNIHR(rr, freqhr = freq)
+      rr = CreateFreqAnalysis(rr)
+      rr = CalculatePowerBand(rr, indexFreqAnalysis = 1, size = size, shift = shift)
+      
+      freq_analysis = do.call(cbind, rr$FreqAnalysis[[1]][1:7])%>%
+        as_tibble()%>%
+        select(-Time)%>%
+        filter(complete.cases(.))%>%
+        mutate_all(funs(max, min, sd, mean), na.rm=TRUE)%>%
+        select(matches(".*_.*"))%>%
+        slice(1)
+      
+      if(nrow(freq_analysis) == 0){
+        freq_analysis[1,] = NA
+      }
+      
+      return(freq_analysis)
+    },
+    error=function(c)
+    {
+      cols = c("HRV", "ULF", "VLF", "LF", "HF", "LFHF")
+      cols = rep.int(cols,4)
+      cols2 = rep(c("_max", "_min", "_sd", "_mean"), each = 6)
+      freq_analysis = as.data.frame(matrix(nrow = 0, ncol = 24))%>%
+        as_tibble()
+      names(freq_analysis) = paste0(cols, cols2)
+      freq_analysis[1,] = NA
+      return(freq_analysis)
+    }
+    )
+}
+```
+
+```{r gather all data loop, message=FALSE, warning=FALSE}
+ids = surveys$ID%>%
+  unique()%>%
+  .[!is.na(.)]
+
+SIZE = 60*10 #width of the sliding window in seconds (10minutes)
+INTERVAL = 7.8 #width of bins used to create histogram in milliseconds
+DURATION = 60*30 #length of the event in seconds (30 minutes)
+FREQ = 2
+
+final_data_df = NULL
+unprocessed = NULL
+
+for(id in ids){
+  
+  participant_df = ibi_data%>%
+    filter(ID == id)%>%
+    arrange(Session_Start_GMT, Beat)
+
+  participant_surveys = surveys%>%
+    filter(ID == id)%>%
+    filter(!is.na(EmotionalEatingEpisodes))%>%
+    arrange(Event)
+  
+  for(i in 1:nrow(participant_surveys)){
+    
+    subset_df = participant_df%>%
+      filter(Beat <= participant_surveys$Event[i] & Beat >= participant_surveys$Event[i] - DURATION)
+    
+    if(nrow(subset_df) <= 2){
+      
+      unprocessed = participant_surveys%>%
+        select(one_of(c("ID", "Event")))%>%
+        rbind(unprocessed,.)
+      
+      next
+    }else{
+      
+      time_analysis = ExtractTimeFeatures(subset_df, SIZE)
+      freq_analysis = ExtractFreqFeatures(subset_df, freq = FREQ, size = 10, shift = 2)
+      
+      final_data_df = rbind(final_data_df, cbind(participant_surveys[i,], time_analysis, freq_analysis))
+    }
+  }
+}
+
+alldata = final_data_df
+```
+
+```{r}
+alldata%>%
+  mutate(Y = factor(ifelse(EmotionalEatingEpisodes == 1 | EmotionalEatingEpisodes == 3, "Episode", "Control")))%>%
+  select(one_of(c("ID", "Y")), SDNN:LFHF_mean)%>%
+  group_by(Y)%>%
+  count()
+
+alldata%>%
+  mutate(Y = factor(ifelse(EmotionalEatingEpisodes == 1 | EmotionalEatingEpisodes == 3, "Episode", "Control")))%>%
+  select(one_of(c("ID", "Y")), SDNN:LFHF_mean)%>%
+  filter(complete.cases(.))%>%
+  group_by(Y)%>%
+  count()
+```
+
+
+```{r}
+unprocessed%>%
+  group_by(ID)%>%
+  count()%>%
+  ggplot(aes(x=ID,y=n))+
+  geom_bar(stat="identity")+
+  labs(title=paste0("Unprocessed data with params:\nSize=", SIZE,"\nDuration=",DURATION))
+```
+
+```{r systemmatically pick similar controls to events}
+systemmatic = alldata
+systemmatic = systemmatic%>%
+  filter(complete.cases(.))%>%
+  mutate(Y = factor(ifelse(EmotionalEatingEpisodes == 1 | EmotionalEatingEpisodes == 3, "Episode", "Control")),
+         day = wday(when, label = TRUE),
+         hour = hour(when))
+
+eps = systemmatic%>%
+  filter(complete.cases(.))%>%
+  filter(Y == "Episode")
+
+cont = systemmatic%>%
+  filter(complete.cases(.))%>%
+  filter(Y != "Episode")
+
+nhits = 0
+final_controls = NULL
+
+for(row in 1:nrow(eps)){
+  
+  ddf = cont%>%
+    filter((hour > eps$hour[row] - 1 | hour < eps$hour[row] + 1) & day == eps$day[row])%>%
+    distinct()%>%
+    sample_n(1)
+  
+  final_controls = rbind(final_controls, ddf)
+}
+
+systemmatic = rbind(eps, final_controls)
+```
+
+```{r}
+systemmatic%>%
+  mutate(Y = factor(ifelse(EmotionalEatingEpisodes == 1 | EmotionalEatingEpisodes == 3, "Episode", "Control")))%>%
+  select(one_of(c("ID", "Y")), SDNN:LFHF_mean)%>%
+  group_by(Y)%>%
+  count()
+
+systemmatic%>%
+  mutate(Y = factor(ifelse(EmotionalEatingEpisodes == 1 | EmotionalEatingEpisodes == 3, "Episode", "Control")))%>%
+  select(one_of(c("ID", "Y")), SDNN:LFHF_mean)%>%
+  filter(complete.cases(.))%>%
+  group_by(Y)%>%
+  count()
+```
+
+
+```{r generate data and systemmatically filter functions}
+GenerateData = function(participants_ibi, survey_df){
+
+  final_data = data.frame()
+  for(id in ids){
+    
+    participant_df = participants_ibi%>%
+      filter(ID == id)%>%
+      arrange(Session_Start_GMT, Beat)
+  
+    participant_surveys = survey_df%>%
+      filter(ID == id)%>%
+      filter(!is.na(EmotionalEatingEpisodes))%>%
+      arrange(Event)
+    
+    for(i in 1:nrow(participant_surveys)){
+      
+      subset_df = participant_df%>%
+        filter(Beat <= participant_surveys$Event[i] & Beat >= participant_surveys$Event[i] - DURATION)
+      
+      if(nrow(subset_df) <= 2){
+        
+        unprocessed = participant_surveys%>%
+          select(one_of(c("ID", "Event")))%>%
+          rbind(unprocessed,.)
+        
+        next
+      }else{
+        
+        time_analysis = ExtractTimeFeatures(subset_df)
+        freq_analysis = ExtractFreqFeatures(subset_df)
+        
+        final_data = rbind(final_data, cbind(participant_surveys[i,], time_analysis, freq_analysis))
+      }
+    }
+  }
+  
+  return(final_data)
+}
+
+ReplaceOutliers = function(vec){
+  
+  iqr = IQR(vec, na.rm=T)
+  caps <- quantile(vec, probs=c(0.05, 0.75), na.rm = T)
+  vec[vec > 1.5*iqr] = caps[2]
+  return(vec)
+  
+}
+
+SystemmaticFilter = function(dff){
+  
+  systemmatic = dff%>%
+    filter(complete.cases(.))%>%
+    mutate(Y = factor(ifelse(EmotionalEatingEpisodes == 1 | EmotionalEatingEpisodes == 3, "Episode", "Control")),
+           day = wday(when, label = TRUE),
+           hour = hour(when))%>%
+    mutate_at(vars(SDNN:LFHF_mean), funs(ReplaceOutliers))
+  
+  eps = systemmatic%>%
+    filter(complete.cases(.))%>%
+    filter(Y == "Episode")
+  
+  cont = systemmatic%>%
+    filter(complete.cases(.))%>%
+    filter(Y != "Episode")
+  
+  nhits = 0
+  final_controls = NULL
+  
+  for(row in 1:nrow(eps)){
+    
+    ddf = cont%>%
+      filter((hour > eps$hour[row] - 1 | hour < eps$hour[row] + 1) & day == eps$day[row])%>%
+      distinct()%>%
+      sample_n(1)
+    
+    final_controls = rbind(final_controls, ddf)
+  }
+  
+  systemmatic = rbind(eps, final_controls)
+    
+  
+  
+  return(systemmatic)
+}
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+mydf = GenerateData(ibi_data,surveys)
+mydf2 = SystemmaticFilter(mydf)
+```
+
+```{r}
+mydf2%>%
+  select(Y, SDNN:LFHF_mean)%>%
+  group_by(Y)%>%
+  summarise_all(funs(mean))
+```
+
+

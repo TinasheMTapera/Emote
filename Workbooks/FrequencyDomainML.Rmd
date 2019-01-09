@@ -1,0 +1,553 @@
+---
+title: "Modelling Frequency"
+output: html_notebook
+---
+
+Let's compare the frequency variables using only participants with both episodes and controls.
+
+```{r}
+library(tidyverse, quietly = T)
+library(caret, quietly = T)
+library(DMwR, quietly = T)
+library(ROSE, quietly = T)
+library(viridis, quietly = T)
+library(DAAG, quietly = T)
+head(features_output)
+```
+
+# Predicting Condition
+
+We use simple over- and under-sampling as well as ROSE and SMOTE to deal with the class imbalance problem. We also only use participants who have both controls and episodes.
+```{r}
+#save participants who qualify with both episode and control
+pp = c(201, 202, 207, 214, 215, 217, 218, 219, 226, 228)
+```
+
+```{r}
+# Here we set the train and test set
+set.seed(2)
+mydat = features_output%>%
+  filter(ID %in% pp)%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Y, Avg_niHR:Avg_HR, HF_6, LF_6, LFHF_6)%>%
+  filter(complete.cases(.))%>%
+  group_by(ID)%>%
+  mutate_at(.vars = vars(Avg_niHR:Avg_HR, HF_6, LF_6, LFHF_6), funs(scale))%>% #z score transform
+  ungroup()%>%
+  select(-ID)%>%
+  rename(Class = Y)
+
+train = createDataPartition(y = mydat$Class, p = 0.7, list = FALSE)
+
+# next, we resample from the training set with different methods
+down = downSample(select(mydat, -Class)[train,], mydat$Class[train])
+up = upSample(select(mydat, -Class)[train,], mydat$Class[train])
+smote = SMOTE(Class ~ ., data  = as.data.frame(mydat[train,]))
+rose = ROSE(Class ~ ., data  = mydat[train,])$data
+
+#some indices for loops
+sample_Names = c("None", "DownSample", "UpSample", "SMOTE", "ROSE")
+samples = list(mydat[train,], down, up, smote, rose)
+names(samples) = sample_Names
+
+# class weights
+weight = function(x){
+  
+  ww = ifelse(x$Class == "Episode",
+                        (1/table(x$Class)[1]) * 0.5,
+                        (1/table(x$Class)[2]) * 0.5)
+  
+  return(ww)
+}
+
+model_weights = lapply(samples, weight)
+```
+
+## Logistic Regression/GLM
+
+Fitting a weighted glm and inspecting the model fit:
+```{r, message=FALSE, warning=FALSE}
+#empty vectors for sampling methods
+glmFitSummaries = vector("list")
+glmModels = vector("list")
+
+#loop through the different samples and fit the model for each
+#store results in empty vectors
+for(s in 1:length(samples)){
+  print(names(samples)[[s]])
+  
+  glmModels[[names(samples)[s]]] = train(Class ~.,
+                 method = "glm",
+                 family=binomial,
+                 data=samples[[s]],
+                 weights = model_weights[[s]])
+  
+  #collect variable significance metrics
+  glmFitSummaries[[names(samples)[s]]] = summary(glmModels[[names(samples)[s]]]$finalModel)%>%
+    .$coefficients%>%
+    data.frame()%>%
+    as.tibble()%>%
+    rownames_to_column(var = "Variable")%>%
+    rename(P_Value = Pr...z..,
+           Z_Value = z.value,
+           Std_Error = Std..Error)%>%
+    mutate(Significant = ifelse(P_Value < 0.05, "Significant", "Not Significant"),
+           Sampling = names(samples)[[s]])
+}
+
+```
+```{r}
+#print the GLM variable estimates and significance for each model
+do.call(rbind, glmFitSummaries)%>%
+  select(Sampling, Variable, Significant, everything())
+```
+No significant predictors.
+
+Evaluating prediction:
+```{r}
+#empy vectors for results
+glmResults = vector("list")
+glmPredictions = vector("list")
+
+#loop through the different samples and predict test cases
+#store results in empty vectors
+for(s in 1:length(samples)){
+  print(names(samples)[[s]])
+  
+  pred = predict(
+    glmModels[[names(samples)[s]]], 
+    newdata = mydat[-train,],
+    type = "raw")%>%
+    data.frame(pred = ., obs = mydat$Class[-train])
+  
+  glmPredictions[[names(samples)[s]]] = pred
+  
+  glmResults[[names(samples)[s]]] = confusionMatrix(pred$pred, 
+                                                    pred$obs, 
+                                                    positive = "Episode")
+}
+
+#data frame for compiling results
+comparisons = data.frame()
+
+#loop through each sampling method's results and compile
+for(x in 1:length(glmResults)){
+  
+  comparisons = glmResults[[names(samples)[x]]]$byClass%>%
+    data.frame(Value = .)%>%
+    rownames_to_column()%>%
+    rename(Variable = rowname)%>%
+    mutate(Sampling = names(samples)[x])%>%
+    select(Sampling, everything())%>%
+    rbind(comparisons, .)
+}
+
+#plot
+comparisons%>%
+  ggplot(aes(x = Variable, y = Value))+
+  geom_point(aes(color = Sampling, shape = Sampling), alpha = 0.7, size = 5)+
+  theme_minimal()+
+  labs(title = "GLM: Classification Metrics by Sampling Method", x = "Metric")+
+  coord_flip()+
+  theme(text = element_text(size = 15))+
+  scale_color_viridis(discrete = TRUE)
+```
+
+Rose sampling produced the best balanced accuracy and balance between sensitivity and specificity.
+
+##Results
+```{r}
+lapply(glmPredictions, table)
+do.call(rbind, glmPredictions)%>%
+  rownames_to_column()%>%
+  rename(S = rowname)%>%
+  separate(S, c("Sampling", "xx"), sep = "\\.")%>%
+  select(-xx)%>%
+  group_by(Sampling)%>%
+  summarise(Overall_Accuracy = sum(pred == obs)/n())%>%
+  arrange(desc(Overall_Accuracy))
+final_glm = comparisons%>%
+  filter(Sampling == "ROSE")%>%
+  arrange(Variable)%>%
+  mutate(Model = "LogisticRegression")%>%
+  select(Model, everything())
+
+final_glm
+```
+
+
+## XGBoost
+
+Using a weighted cost sensitive XGBoost classifier for each resampling method:
+```{r, echo=FALSE}
+#empty vectors for sampling methods
+rfFitSummaries = vector("list")
+rfModels = vector("list")
+
+#loop through the different samples and fit the model for each
+#store results in empty vectors
+for(s in 1:length(samples)){
+  print(names(samples)[[s]])
+  
+  tc = trainControl("cv", 10, 
+                    savePredictions=T, 
+                    search = "random",
+                    summaryFunction = twoClassSummary,
+                    classProbs = T) 
+  
+  rfModels[[names(samples)[s]]] = train(Class ~.,
+               method = "xgbTree",
+               data=samples[[s]],
+               trControl = tc,
+               metric = "ROC",
+               weights = model_weights[[s]],
+               tuneLength = 3) #use precision for imbalance
+  
+  #collect variable IMPORTANCE metrics smaller decreaseGini is better
+  rfFitSummaries[[names(samples)[s]]] = rfModels[[names(samples)[s]]]$finalModel$importance%>%
+    data.frame()%>%
+    as.tibble()%>%
+    rownames_to_column(var = "Variable")%>%
+    mutate(Sampling = names(samples)[[s]])%>%
+    select(Sampling, everything())
+}
+
+```
+
+```{r, eval=FALSE}
+# plotting solution found here: 
+# https://github.com/dgrtwo/drlib/blob/master/R/reorder_within.R
+# Much appreciated @drlib
+
+reorder_within <- function(x, by, within, fun = mean, sep = "___", ...) {
+  new_x <- paste(x, within, sep = sep)
+  stats::reorder(new_x, by, FUN = fun)
+}
+scale_x_reordered <- function(..., sep = "___") {
+  reg <- paste0(sep, ".+$")
+  ggplot2::scale_x_discrete(labels = function(x) gsub(reg, "", x), ...)
+}
+scale_y_reordered <- function(..., sep = "___") {
+  reg <- paste0(sep, ".+$")
+  ggplot2::scale_y_discrete(labels = function(x) gsub(reg, "", x), ...)
+}
+
+do.call(rbind, rfFitSummaries)%>%
+  mutate_if(is.character, as.factor)%>%
+  ggplot(., aes(x = reorder_within(Variable, MeanDecreaseGini, Sampling),
+                y = MeanDecreaseGini,
+                fill = Variable))+
+  geom_bar(stat = "identity", show.legend = FALSE)+
+  scale_x_reordered()+
+  facet_wrap(~Sampling, scales = "free")+
+  coord_flip()+
+  labs(x="Variable",
+       title = "Variable Importance Per Sampling Method",
+       subtitle = "(Lower Values Indicate More Importance in Making Stronger Final Predictions)")+
+  theme_minimal()+
+  scale_fill_viridis(discrete=TRUE)
+```
+
+Evaluating prediction:
+```{r}
+#empy vectors for results
+rfResults = vector("list")
+rfPredictions = vector("list")
+
+#loop through the different samples and predict test cases
+#store results in empty vectors
+for(s in 1:length(samples)){
+  print(names(samples)[[s]])
+  
+  rfPredictions[[names(samples)[s]]] = predict(rfModels[[names(samples)[s]]],newdata=mydat[-train,])%>%
+  tibble(pred = ., obs = mydat[-train,]$Class)
+  
+  rfResults[[names(samples)[s]]] = confusionMatrix(pred$pred, 
+                                                    pred$obs, 
+                                                    positive = "Episode")
+}
+
+#data frame for compiling results
+comparisons = data.frame()
+
+#loop through each sampling method's results and compile
+for(x in 1:length(glmResults)){
+  
+  comparisons = rfResults[[names(samples)[x]]]$byClass%>%
+    data.frame(Value = .)%>%
+    rownames_to_column()%>%
+    rename(Variable = rowname)%>%
+    mutate(Sampling = names(samples)[x])%>%
+    select(Sampling, everything())%>%
+    rbind(comparisons, .)
+}
+
+#plot
+comparisons%>%
+  ggplot(aes(x = Variable, y = Value))+
+  geom_point(aes(color = Sampling, shape = Sampling), alpha = 0.7, size = 5)+
+  theme_minimal()+
+  labs(title = "XGBoost: Classification Metrics by Sampling Method",
+       x = "Metric")+
+  coord_flip()+
+  theme(text = element_text(size = 15))+
+  scale_color_viridis(discrete = TRUE)
+```
+
+Sampling approach has no effect on the model accuracies with XGBoost.
+
+##Results
+```{r}
+lapply(rfPredictions, table)
+do.call(rbind, rfPredictions)%>%
+  rownames_to_column()%>%
+  rename(S = rowname)%>%
+  separate(S, c("Sampling", "xx"), sep = "\\.")%>%
+  select(-xx)%>%
+  group_by(Sampling)%>%
+  summarise(Overall_Accuracy = sum(pred == obs)/n())%>%
+  arrange(desc(Overall_Accuracy))
+
+final_RF = comparisons%>%
+  filter(Sampling == "UpSample")%>%
+  arrange(Variable)%>%
+  mutate(Model = "RandomForest")%>%
+  select(Model, everything())
+final_RF
+```
+
+XGBoost doesn't respond to sampling changes, but maintained an overall accuracy of 84%.
+
+## Support Vector Machine
+
+Using a `kernlab` radial SVM with class weights. Fitting and inspecting the model:
+```{r, echo=FALSE, include=FALSE}
+#empty vectors for sampling methods
+svmFitSummaries = vector("list")
+svmModels = vector("list")
+
+#loop through the different samples and fit the model for each
+#store results in empty vectors
+for(s in 1:length(samples)){
+  print(names(samples)[[s]])
+  
+  tc = trainControl("cv", 15, 
+                    savePredictions=T, 
+                    summaryFunction = twoClassSummary,
+                    classProbs = T,
+                    search = "random")
+  
+  svmModels[[names(samples)[s]]] = train(Class ~.,
+               method = "svmRadialWeights",
+               data=samples[[s]],
+               trControl = tc,
+               tuneLength = 3,
+               weights = model_weights[[s]],
+               metric = "ROC")
+  
+  #collect summaries
+  svmFitSummaries[[names(samples)[s]]] = svmModels[[names(samples)[s]]]$finalModel
+}
+```
+
+```{r}
+svmFitSummaries
+svmModels$None$finalModel
+```
+
+You can see the different gaussian kernals with the best cost for each model fit (based on cross-validation).
+
+Evaluating prediction:
+```{r}
+#empy vectors for results
+svmResults = vector("list")
+svmPredictions = vector("list")
+
+#loop through the different samples and predict test cases
+#store results in empty vectors
+for(s in 1:length(samples)){
+  print(names(samples)[[s]])
+  
+  svmPredictions[[names(samples)[s]]] = predict(svmModels[[names(samples)[s]]],newdata=mydat[-train,])%>%
+  tibble(pred = ., obs = mydat[-train,]$Class)
+  
+  svmResults[[names(samples)[s]]] = confusionMatrix(pred$pred, 
+                                                    pred$obs, 
+                                                    positive = "Episode")
+}
+
+#data frame for compiling results
+comparisons = data.frame()
+
+#loop through each sampling method's results and compile
+for(x in 1:length(svmResults)){
+  
+  comparisons = svmResults[[names(samples)[x]]]$byClass%>%
+    data.frame(Value = .)%>%
+    rownames_to_column()%>%
+    rename(Variable = rowname)%>%
+    mutate(Sampling = names(samples)[x])%>%
+    select(Sampling, everything())%>%
+    rbind(comparisons, .)
+}
+
+#plot
+comparisons%>%
+  ggplot(aes(x = Variable, y = Value))+
+  geom_point(aes(color = Sampling, shape = Sampling), alpha = 0.7, size = 5)+
+  theme_minimal()+
+  labs(title = "SVM: Classification Metrics by Sampling Method",
+       x = "Metric")+
+  coord_flip()+
+  theme(text = element_text(size = 15))+
+  scale_color_viridis(discrete = TRUE)
+```
+
+SVM doesn't respond to differences in sampling methods in this case.
+
+##Results
+```{r}
+lapply(svmPredictions, table)
+do.call(rbind, svmPredictions)%>%
+  rownames_to_column()%>%
+  rename(S = rowname)%>%
+  separate(S, c("Sampling", "xx"), sep = "\\.")%>%
+  select(-xx)%>%
+  group_by(Sampling)%>%
+  summarise(Overall_Accuracy = sum(pred == obs)/n())%>%
+  arrange(desc(Overall_Accuracy))
+
+final_svm = comparisons%>%
+  filter(Sampling == "UpSample")%>%
+  arrange(Variable)%>%
+  mutate(Model = "SVM")%>%
+  select(Model, everything())
+
+final_svm
+```
+
+Upsampling produced the best overall accuracy (88%).
+
+## NeuralNet
+
+Using `nnet` model averaged NNET. Fitting and inspecing the model:
+```{r, include=FALSE}
+#empty vectors for sampling methods
+nnetFitSummaries = vector("list")
+nnetModels = vector("list")
+
+#loop through the different samples and fit the model for each
+#store results in empty vectors
+for(s in 1:length(samples)){
+  print(names(samples)[[s]])
+
+  tc = trainControl(method = 'cv', number = 50, 
+                    classProbs = TRUE, 
+                    summaryFunction = twoClassSummary, 
+                    savePredictions = TRUE,
+                    search = "random")
+  
+  #fit model
+  nnetModels[[names(samples)[s]]] = train(Class ~.,
+                 method = "avNNet",
+                 data=samples[[s]],
+                 trControl = tc,
+                 tuneLength = 5,
+                 weights = model_weights[[s]],
+                 metric = "ROC")
+  
+  #collect summaries
+  nnetFitSummaries[[names(samples)[s]]] = nnetModels[[names(samples)[s]]]$finalModel
+}
+
+```
+
+```{r}
+nnetFitSummaries
+```
+
+Evaluating prediction:
+```{r}
+#empy vectors for results
+nnetResults = vector("list")
+nnetPredictions = vector("list")
+
+#loop through the different samples and predict test cases
+#store results in empty vectors
+for(s in 1:length(samples)){
+  print(names(samples)[[s]])
+  
+  nnetPredictions[[names(samples)[s]]] = predict(nnetModels[[names(samples)[s]]],newdata=mydat[-train,])%>%
+  tibble(pred = ., obs = mydat[-train,]$Class)
+  
+  nnetResults[[names(samples)[s]]] = confusionMatrix(pred$pred, 
+                                                    pred$obs, 
+                                                    positive = "Episode")
+}
+
+#data frame for compiling results
+comparisons = data.frame()
+
+#loop through each sampling method's results and compile
+for(x in 1:length(nnetResults)){
+  
+  comparisons = nnetResults[[names(samples)[x]]]$byClass%>%
+    data.frame(Value = .)%>%
+    rownames_to_column()%>%
+    rename(Variable = rowname)%>%
+    mutate(Sampling = names(samples)[x])%>%
+    select(Sampling, everything())%>%
+    rbind(comparisons, .)
+}
+
+#plot
+comparisons%>%
+  ggplot(aes(x = Variable, y = Value))+
+  geom_point(aes(color = Sampling, shape = Sampling), alpha = 0.7, size = 5)+
+  theme_minimal()+
+  labs(title = "Neural Network: Classification Metrics by Sampling Method",
+       x = "Metric")+
+  coord_flip()+
+  theme(text = element_text(size = 15))+
+  scale_color_viridis(discrete = TRUE)
+```
+Neural Net is also unresponsive to the sampling approach.
+
+##Results
+```{r}
+lapply(nnetPredictions, table)
+do.call(rbind, nnetPredictions)%>%
+  rownames_to_column()%>%
+  rename(S = rowname)%>%
+  separate(S, c("Sampling", "xx"), sep = "\\.")%>%
+  select(-xx)%>%
+  group_by(Sampling)%>%
+  summarise(Overall_Accuracy = sum(pred == obs)/n())%>%
+  arrange(desc(Overall_Accuracy))
+
+final_nn = comparisons%>%
+  filter(Sampling == "DownSample")%>%
+  arrange(Variable)%>%
+  mutate(Model = "NeuralNetwork")%>%
+  select(Model, everything())
+
+final_nn
+```
+
+Downsampling showed the best overall accuracy for the NN (84%).
+
+# Conclusion
+This table ranks all of the best models for each metric:
+```{r}
+rbind(final_glm, final_RF, final_svm, final_nn)%>%
+  group_by(Variable)%>%
+  arrange(Variable, desc(Value))
+```
+
+* The best model is the Logistic Regression for balanced accuracy (with SMOTE resampling)
+* For precision the best model is Logistic Regression
+* For sensitivity the best model is Logistic regression
+* For specificity the best model is Logistic regression
+* The machine learning algorithms attempt to predict every case to "control" even after trying to adjust for resampling methods.
+
+The overall accuracy is 80% for logistic regression (decreased very slightly), 88% for random forest (increased by 10), 84% for the SVM (increased slightly), and 76% for neural network (decreased).
