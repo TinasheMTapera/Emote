@@ -1,0 +1,145 @@
+---
+title: "TimeDomainSummary"
+output: html_notebook
+---
+
+```{r, include=FALSE}
+library(tidyverse, quietly = T)
+library(caret, quietly = T)
+library(DMwR, quietly = T)
+library(ROSE, quietly = T)
+library(viridis, quietly = T)
+library(DAAG, quietly = T)
+```
+
+# Time Domain Summary
+How many cases are there to use?
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Y, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  group_by(ID, Y)%>%
+  count()
+```
+
+```{r}
+#save ONLY participants who qualify with both episode and control
+pp = c(201, 202, 207, 214, 215, 217, 218, 219, 220, 222)
+```
+
+# Within Participant Comparisons
+
+Here we compare within-participant if episodes have different time-domain variables from controls, for each participant.
+
+A plot for clarity
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(ID %in% pp)%>%
+  select(ID, Y, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  group_by(ID)%>%
+  mutate_at(.vars = vars(SDNN:HRVi), funs(scale))%>% #z score transform within participants
+  ungroup()%>%
+  select(Y, everything())%>%
+  gather("Variable", "Value", 3:12)%>%
+  ggplot(aes(x=Variable, y=Value))+
+  geom_boxplot(aes(fill=Y))+
+  theme_minimal()+
+  labs(y = "Z Score", title = "Boxplot of All Variables By Condition", subtitle = "Time Domain Variables")+
+  facet_grid(ID~.)
+```
+
+Single lines indicate that there's only one reading for that participant's variable. This is in a lot of cases, unfortunately, as you can see from the previous table. I'd only feel comfortable running the permutation T with 207. But we can still attempt the t-tests regardless:
+
+```{r}
+simple_scale = function(vec){
+  vec%>%
+    scale()%>%
+    as.numeric()%>%
+    return()
+}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  #filter(ID == 207)%>%
+  filter(ID %in% pp)%>%
+  select(ID, Y, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  group_by(ID)%>%
+  mutate_at(.vars = vars(SDNN:HRVi), funs(simple_scale))%>% #z score transform
+  select(Y:HRVi)%>%
+  summarise_at(funs(twotPermutation(.[Y == "Control"],
+                                    .[Y != "Control"], 
+                                    plotit = F)),
+               .vars = vars(SDNN:HRVi))#%>%
+  #filter_at(vars(SDNN:HRVi), any_vars(. < 0.05))
+```
+
+The above table shows the $p$ value for each Episode vs Control hypothesis test that the variable is significantly different. Each row is a participant, and each column is a variable to be tested for condition. None of the tests were significant within participants. Using the full dataset we test it again:
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  #filter(ID == 207)%>%
+  filter(ID %in% pp)%>%
+  select(ID, Y, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  #group_by(ID)%>%
+  mutate_at(.vars = vars(SDNN:HRVi), funs(simple_scale))%>% #z score transform
+  select(Y:HRVi)%>%
+  #ungroup()%>%
+  summarise_at(funs(twotPermutation(.[Y == "Control"],
+                                    .[Y != "Control"], 
+                                    plotit = F)),
+               .vars = vars(SDNN:HRVi))
+```
+
+None are significant. 
+
+We can still get a quick summary table of all the features though. In total:
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  #filter(ID == 207)%>%
+  filter(ID %in% pp)%>%
+  select(SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  psych::describe(quant=c(.25,.75))%>%
+  as_tibble()%>%
+  rownames_to_column()%>%
+  rename(Variable = rowname)%>%
+  select(-c(vars, trimmed, mad))
+```
+
+For episodes:
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(Y == "Episode")%>%
+  filter(ID %in% pp)%>%
+  select(SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  psych::describe(quant=c(.25,.75))%>%
+  as_tibble()%>%
+  rownames_to_column()%>%
+  rename(Variable = rowname)%>%
+  select(-c(vars, trimmed, mad))
+```
+
+For controls:
+
+```{r}
+features_output%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  filter(Y != "Episode")%>%
+  filter(ID %in% pp)%>%
+  select(SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  psych::describe(quant=c(.25,.75))%>%
+  as_tibble()%>%
+  rownames_to_column()%>%
+  rename(Variable = rowname)%>%
+  select(-c(vars, trimmed, mad))
+```

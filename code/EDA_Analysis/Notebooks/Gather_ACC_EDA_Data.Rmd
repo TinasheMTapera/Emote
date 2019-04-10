@@ -1,0 +1,89 @@
+---
+title: "EDA Feature Extraction"
+output: html_notebook
+---
+
+In this notebook we demonstrate how to collect and organise the EDA features into usable observations
+
+```{r, session settings, echo=FALSE}
+TZ = "America/New_York"
+Sys.setenv(TZ="America/New_York")
+library(tidyverse, quietly = TRUE) #for tidy R programming
+library(data.table, quietly = TRUE) #for fast csv reading
+library(lubridate, quietly = TRUE) #for datetime manipulation
+library(stringr, quietly = TRUE)
+library(readr, quietly = TRUE)
+library(purrr, quietly = TRUE)
+```
+
+First get the survey data:
+```{r}
+events <- read_csv("/Users/mac/GDriveDocs/Quantitative Psychology & Statistics Lab/Emote/DataOutputs/UpdatedSurveys_180713.csv")
+
+events$Event <- ymd_hms(events$Event)
+head(events)
+```
+
+Then, for one user, read in their accelerometer features:
+```{r}
+p200 <- "/Users/mac/GDriveDocs/Quantitative Psychology & Statistics Lab/Emote/EDA_Analysis/outputs/200"
+
+acc_features <- list.files(p200, full.names = TRUE) %>%
+  grep(pattern = "features", value = TRUE) %>%
+  read_csv()
+
+head(acc_features)
+```
+
+And the list of data frames of their EDA peaks
+```{r}
+read_and_name <- function(f){
+  
+  csv <- read_csv(f)
+  event <- ymd_hms(str_replace(basename(f), "\\.csv", ""))
+  csv$Event = event
+  
+  csv
+}
+
+eda_peaks <- list.files(p200, full.names = TRUE) %>%
+  grep(pattern = "features", value = TRUE, invert = TRUE) %>%
+  map_df(., read_and_name)
+
+eda_peaks <- dplyr::arrange(eda_peaks, Event)
+head(eda_peaks)
+```
+
+To make it easy, we will join the peak data and accelerometer data:
+```{r}
+full_eda <- left_join(acc_features, eda_peaks, by = "Event")
+
+str(full_eda)
+```
+
+We can write this file out to disk as an .rds
+
+Now, we can loop through the participants to apply this strategy
+
+```{r}
+participants <- list.dirs("/Users/mac/GDriveDocs/Quantitative Psychology & Statistics Lab/Emote/EDA_Analysis/outputs", full.names = TRUE) %>%
+  grep(pattern = "[[:digit:]]$", value = TRUE)
+
+for(x in participants) {
+  
+  acc_features <- list.files(x, full.names = TRUE) %>%
+    grep(pattern = "features", value = TRUE) %>%
+    read_csv()
+  
+  eda_peaks <- list.files(x, full.names = TRUE) %>%
+    grep(pattern = "features", value = TRUE, invert = TRUE) %>%
+    grep(pattern = "csv", value = TRUE) %>%
+    map_df(., read_and_name)
+  
+  
+  full_eda <- left_join(acc_features, eda_peaks, by = "Event")
+  
+  write_rds(full_eda, paste0(x, "/full_out.rds"))
+}
+```
+

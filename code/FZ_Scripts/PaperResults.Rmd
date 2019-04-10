@@ -1,0 +1,343 @@
+---
+title: "Final Paper Results"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  word_document: default
+---
+
+```{r}
+suppressPackageStartupMessages(
+  {
+    library(tidyverse, quietly = TRUE)
+    library(purrr, quietly = TRUE)
+    library(stringr, quietly = TRUE)
+    library(furrr, quietly = TRUE)
+    library(lubridate, quietly = TRUE)
+    library(broom, quietly = TRUE)
+    library(knitr, quietly = TRUE)
+    library(DAAG, quietly = TRUE)
+    library(ROSE, quietly = TRUE)
+    library(caret, quietly = TRUE)
+    library(e1071, quietly = TRUE)
+    library(readxl, quietly = TRUE)
+  }
+)
+```
+
+This document summarises the important results from the IBI analysis.
+
+# Part 1: Time Domain
+## Data Set
+
+```{r}
+mydat = read.csv("../DataOutputs/data_out.csv")%>%
+  filter(threshold == 250 & winds == 2)%>%
+  select(-winds, - threshold, -index)
+dim(mydat)
+
+mydat1 <- mydat[ complete.cases(mydat) , ]
+rmind <- which((mydat1$Stress>=5) & (mydat1$Y == "Control"))
+mydat2 <- mydat1[-rmind, ]
+dim(mydat2)
+#142
+str(mydat2)
+table(mydat2$Y)
+#    Control Episode 
+#     0     110      19 
+
+#creat within subject z scores
+mydat3 <- mydat2
+temp =  unique(mydat2$ID)
+m = length(temp)
+for (i in 1:m){
+tempdat <- mydat2[which(mydat2$ID == temp[i]), ]	
+mydat3[which(mydat2$ID == temp[i]), 6:15] <- scale(tempdat[ , 6:15])	
+}
+mydat3 <- mydat3[complete.cases(mydat3), ]
+table(mydat3$Y)
+#        Control Episode 
+#      0      107      19
+```
+
+## Summary Statistics
+The statistics for the controls:
+```{r, results='asis'}
+mydat2 %>%
+  filter(Y == 'Control') %>%
+  select(-c(Y, when, Event, Stress)) %>%
+  psych::describe(quant=c(.25,.75))%>%
+  rownames_to_column()%>%
+  as_tibble()%>%
+  rename(Variable = rowname)%>%
+  filter(Variable != "ID") %>%
+  select(one_of(c("Variable", "n", "mean", "sd")))
+```
+
+And for episodes:
+```{r, results='asis'}
+mydat2 %>%
+  filter(Y != 'Control') %>%
+  select(-c(Y, when, Event, Stress)) %>%
+  psych::describe(quant=c(.25,.75))%>%
+  rownames_to_column()%>%
+  as_tibble()%>%
+  rename(Variable = rowname)%>%
+  filter(Variable != "ID") %>%
+  select(one_of(c("Variable", "n", "mean", "sd")))
+```
+
+## Between Groups Test
+
+None of the features are significantly different using the permutation T test.
+```{r, results='asis'}
+mydat3 %>%
+  select(Y:HRVi)%>%
+  summarise_at(funs(twotPermutation(.[Y == "Control"],
+                                    .[Y != "Control"], 
+                                    plotit = F)),
+               .vars = vars(SDNN:HRVi))
+```
+
+## Machine Learning
+
+```{r, cache=TRUE}
+# library(e1071)
+# # make predictions
+# library(ROSE)
+# library(caret)
+modelfit <- function(data, mytest){
+
+  # mytrain <- dataset[-folder, ]
+  # mytest <- dataset[folder, ] 
+  ##Generate balanced dataset
+  train.m.bal<- ovun.sample(Y ~ ., data=data, method="both",p=0.6, seed=1342)$data
+  #names(train.m.bal)
+  #print(table(train.m.bal$Y))
+  x.train <- train.m.bal[, 6:15]
+  x.train <- as.matrix(x.train)
+  y.train <- train.m.bal$Y
+  #y.train <- as.numeric(train.m.bal$Y)
+  #y.train[which(train.m.bal$Y == "Control")] <- 0
+  #y.train[which(train.m.bal$Y == "Episode")] <- 1
+  print(table(y.train)) # 0 is control, 1 is episode
+  data.train <- cbind(y.train, x.train)
+  fit<- train(as.factor(y.train) ~ ., data= data.train,method="svmPoly")
+  x.test <- mytest[, 6:15]
+  x.test <- as.matrix(x.test)
+  ytest <- as.factor(as.numeric(mytest$Y))
+  print(table(ytest))
+  yhat6 = predict(fit, x.test)
+  temp <- confusionMatrix(yhat6,ytest)
+  
+  result <- c(temp$overall[1], temp$byClass[1:2]) #<-can change threshold if you want
+  return(result)
+}
+
+#make predictions
+#involve random sampling, need to set the seed
+#set.seed(9)
+#nfolds=4
+#subdata<-createFolds(mydat2$Y, nfolds)
+#t1 <- modelfit(mydat2, subdata$Fold1)
+#t1
+#t2 <- modelfit(mydat2, subdata$Fold2)
+#t2
+#t3 <- modelfit(mydat2, subdata$Fold3)
+#t3
+#t4 <- modelfit(mydat2, subdata$Fold4)
+#t4
+#colMeans(rbind(t1,t2,t3,t4))
+
+set.seed(9)
+nfolds=4
+subdata<-createFolds(mydat3$Y, nfolds)
+t1 <- modelfit(mydat3[-subdata$Fold1,], mydat3[subdata$Fold1,])
+#t1
+t2 <- modelfit(mydat3[-subdata$Fold2,], mydat3[subdata$Fold2,])
+#t2
+t3 <- modelfit(mydat3[-subdata$Fold3,], mydat3[subdata$Fold3,])
+#t3
+t4 <- modelfit(mydat3[-subdata$Fold4,], mydat3[subdata$Fold4,])
+#t4
+#colMeans(rbind(t1,t2,t3,t4))
+time_domain = colMeans(rbind(t1,t2,t3,t4))
+```
+
+Here are the mean accuracy scores for the machine learning approach
+```{r}
+colMeans(rbind(t1,t2,t3,t4))
+```
+
+
+# Part 2: Frequency Domain
+## Data Set
+
+Note: I couldn't reproduce the same numbers for `table()` as in the code that was sent
+```{r}
+mydat <- read.csv("../DataOutputs/data_out_20181113.csv")%>%
+  filter(threshold == 100 & winds == 2)%>%
+  select(-winds, - threshold, -index)
+
+ind <- c(1, 4, 5, 16:37)
+mydat_freq <- mydat[, ind]
+#mydat2 <- mydat[ complete.cases(mydat$SDNN) , ]
+
+mydat1 <- mydat_freq[ complete.cases(mydat_freq) , ]
+rmind <- which((mydat1$Stress>=5) & (mydat1$Y == "Control"))
+mydat2 <- mydat1[-rmind, ]
+dim(mydat2)
+#142
+str(mydat2)
+table(mydat2$Y)
+#    Control Episode 
+#     0     110      19 
+
+#creat within subject z scores
+mydat3 <- mydat2
+temp =  unique(mydat2$ID)
+m = length(temp)
+for (i in 1:m){
+  tempdat <- mydat2[which(mydat2$ID == temp[i]), ]	
+  mydat3[which(mydat2$ID == temp[i]), 4:25] <- scale(tempdat[ , 4:25])	
+}
+mydat3 <- mydat3[complete.cases(mydat3), ]
+table(mydat3$Y)
+#        Control Episode 
+#      0      107      19
+```
+
+## Summary Statistics
+The statistics for the controls:
+```{r, results='asis'}
+mydat2 %>%
+  filter(Y == 'Control') %>%
+  psych::describe()%>%
+  rownames_to_column()%>%
+  as_tibble()%>%
+  rename(Variable = rowname)%>%
+  filter(Variable != "ID") %>%
+  select(one_of(c("Variable", "n", "mean", "sd")))
+```
+
+And for episodes:
+```{r, results='asis'}
+mydat2 %>%
+  filter(Y != 'Control') %>%
+  psych::describe()%>%
+  rownames_to_column()%>%
+  as_tibble()%>%
+  rename(Variable = rowname)%>%
+  filter(Variable != "ID") %>%
+  select(one_of(c("Variable", "n", "mean", "sd")))
+```
+
+## Between Groups Test
+
+None of the features are significantly different using the permutation T test.
+```{r, results='asis'}
+mydat3 %>%
+  select(Y:LFHF_6)%>%
+  summarise_at(funs(twotPermutation(.[Y == "Control"],
+                                    .[Y != "Control"], 
+                                    plotit = F)),
+               .vars = vars(Avg_niHR:LFHF_6))
+```
+
+## Machine Learning
+
+```{r, cache=TRUE}
+# library(e1071)
+# # make predictions
+# library(ROSE)
+# library(caret)
+#mydat2, subdata$Fold1
+modelfit <- function(data, mytest){
+  
+  data=mydat3[-subdata$Fold1,]
+  mytest = mydat3[subdata$Fold1,]
+  ##Generate balanced dataset
+  train.m.bal<-ovun.sample(Y ~ ., data=data, method="both",p=0.6, seed=1342)$data
+  #names(train.m.bal)
+  #table(train.m.bal$Y)
+  # 6:15
+  #[1] "ID"         "Stress"     "Y"          "Avg_niHR"   "Start_niHR"
+  #[6] "End_niHR"   "Avg_HR"     "HF_1"       "HF_2"       "HF_3"      
+  #[11] "HF_4"       "HF_5"       "HF_6"       "LF_1"       "LF_2"      
+  #[16] "LF_3"       "LF_4"       "LF_5"       "LF_6"       "LFHF_1"    
+  #[21] "LFHF_2"     "LFHF_3"     "LFHF_4"     "LFHF_5"     "LFHF_6"    
+  # just take column 4 to column 19 
+  x.train <- train.m.bal[, 4:19]
+  x.train <- as.matrix(x.train)
+  y.train <- train.m.bal$Y
+  #y.train <- as.numeric(train.m.bal$Y)
+  #y.train[which(train.m.bal$Y == "Control")] <- 0
+  #y.train[which(train.m.bal$Y == "Episode")] <- 1
+  print(table(y.train)) # 0 is control, 1 is episode
+  data.train <- cbind(y.train, x.train)
+  fit<- train(as.factor(y.train) ~ ., data= data.train,method="svmPoly")
+  x.test <- mytest[, 4:19]
+  #x.test <- as.matrix(x.test)
+  ytest <- as.numeric(mytest$Y)
+  print(table(ytest))
+  yhat6 = predict(fit, x.test)
+  #yhat6 <-as.numeric(yhat6)
+  #yhat6 <- as.factor(yhat6)
+  ytest <- as.factor(ytest)
+  temp <- confusionMatrix(yhat6,ytest)
+  
+  result <- c(temp$overall[1], temp$byClass[1:2]) #<-can change threshold if you want
+  return(result)
+}
+
+#make predictions
+#involve random sampling, need to set the seed
+# set.seed(9)
+# nfolds=4
+# subdata<-createFolds(mydat2$Y, nfolds)
+# t1 <- modelfit(mydat2, subdata$Fold1)
+# t1
+# t2 <- modelfit(mydat2, subdata$Fold2)
+# t2
+# t3 <- modelfit(mydat2, subdata$Fold3)
+# t3
+# t4 <- modelfit(mydat2, subdata$Fold4)
+# t4
+# colMeans(rbind(t1,t2,t3,t4))
+
+set.seed(9)
+nfolds=4
+subdata<-createFolds(mydat3$Y, nfolds)
+t1 <- modelfit(mydat3[-subdata$Fold1,], mydat3[subdata$Fold1,])
+#t1
+t2 <- modelfit(mydat3[-subdata$Fold2,], mydat3[subdata$Fold2,])
+#t2
+t3 <- modelfit(mydat3[-subdata$Fold3,], mydat3[subdata$Fold3,])
+#t3
+t4 <- modelfit(mydat3[-subdata$Fold4,], mydat3[subdata$Fold4,])
+#t4
+#colMeans(rbind(t1,t2,t3,t4))
+
+frequency_domain = colMeans(rbind(t1,t2,t3,t4))
+```
+Here are the mean accuracy scores for the machine learning approach:
+```{r}
+colMeans(rbind(t1,t2,t3,t4))
+```
+
+# Machine Learning Plot
+```{r}
+rbind(time_domain, frequency_domain) %>%
+  as.data.frame() %>%
+  rownames_to_column("Domain") %>%
+  gather("Variable", "Value",Accuracy:Specificity) %>%
+  ggplot(aes(x=Variable, y=Value))+
+    geom_col(aes(fill=Domain), position="dodge") +
+    theme_minimal() +
+    labs(title = "SVM Machine Learning Results", subtitle = "Using 4-Fold CV") +
+    scale_fill_brewer(palette = "Set1")
+```
+

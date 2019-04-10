@@ -1,0 +1,125 @@
+---
+title: "Collecting EDA Data"
+output: html_notebook
+---
+
+This notebook gathers the EDA data from the participants and joins the datasets for further analysis.
+```{r, echo=FALSE}
+library(tidyverse, quietly = TRUE)
+library(purrr, quietly = TRUE)
+library(stringr, quietly = TRUE)
+library(furrr, quietly = TRUE)
+library(lubridate, quietly = TRUE)
+library(broom, quietly = TRUE)
+library(knitr, quietly = TRUE)
+library(readxl, quietly = TRUE)
+```
+
+```{r}
+#install.packages("here")
+library(here)
+here()
+# should give you the root folder of the project on your machine
+# if not, add an empty file .here to the root
+```
+
+# Data Set
+
+First confirming that the data is 
+
+```{r}
+eda_dirs <- here("EDA_Analysis", "outputs")
+eda_df <- list.files(eda_dirs,
+                     pattern = ".rds",
+                     recursive = TRUE,
+                     full.names = TRUE) %>%
+  future_map_dfr(.f = function(x) {
+    
+    df <- readRDS(x)
+    df$ID <- str_extract(x, "[[:digit:]]+")
+    
+    df
+  })
+```
+
+```{r}
+events = read_excel(here("DataOutputs", "UpdatedSurveys_180713.xlsx")) %>%
+  group_by(ID) %>%
+  arrange(ID, Event) %>%
+  ungroup() %>%
+  filter(!is.na(ID)) %>%
+  mutate(Event = ymd_hms(Event)) %>%
+  mutate(start = Event - 60 * 30) %>%
+  mutate(intervals = interval(Event, start))
+
+```
+
+```{r}
+remove_overlaps <- function(intervals){
+  
+  overlaps = rep(FALSE, length(intervals))
+  
+  for(l in 1:(length(intervals)-1)){
+    if(!(is.na(intervals[l]) & is.na(intervals[l+1]))){
+      if(int_overlaps(intervals[l], intervals[l+1])){
+        overlaps[l] = TRUE
+      }
+    }
+  }
+  
+  return(overlaps)
+}
+
+events <- events %>%
+  mutate(ID = as.factor(ID)) %>%
+  group_by(ID) %>%
+  mutate(overlapped = remove_overlaps(intervals)) %>%
+  select(-intervals) %>%
+  filter(overlapped ==  FALSE) %>%
+  select(-overlapped) %>%
+  ungroup()
+
+eda_df <- events %>%
+  select(ID, EmotionalEatingEpisodes, Event, Stress) %>%
+  mutate(ID = as.character(ID)) %>%
+  left_join(eda_df, by = c("ID", "Event"))
+```
+
+```{r}
+eda_complete <- eda_df %>%
+  #slice(5000:1000000) %>%
+  group_by(Event) %>% # for each survey
+  mutate(Avg_Temp = mean(Temp), # average temp within survey
+         Avg_filtered_EDA = mean(filtered_eda) # average filtered eda within survey
+         Avg_Motion = mean(motion) # average motion within survey
+         ) %>%
+  filter_at(
+    vars(amp:SCR_width), all_vars(. > 0) # for amp:scr width, select complete cases within survey
+    ) %>%
+  slice(which.max(amp)) # get highest val for amplitude within the survey
+
+```
+
+```{r}
+eda_complete %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Epidose", "Control")) %>%
+  select(-c(EmotionalEatingEpisodes, AccelX, AccelY, AccelZ, peaks, peak_start, peak_end, peak_start_times, peak_end_times, half_rise, EDA, datetime, steps, motion, filtered_eda, max_deriv)) %>%
+  select(ID, Event, Y, everything()) %>%
+  write.csv(here("DataOutputs", "EDA_Emote.csv"))
+```
+
+```{r}
+ibi_features <- read_csv(here('dataOutputs', 'data_out_20190308.csv')) %>%
+  mutate(ID = as.character(ID)) %>%
+  select(-c(when, threshold, winds))
+eda_complete %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Epidose", "Control")) %>%
+  select(-c(EmotionalEatingEpisodes, AccelX, AccelY, AccelZ, peaks, peak_start, peak_end, peak_start_times, peak_end_times, half_rise, EDA, datetime, steps, motion, filtered_eda, max_deriv)) %>%
+  select(ID, Event, Y, everything()) %>%
+  left_join(ibi_features, by = c("ID", "Event")) %>%
+  select(-Y.y, -Stress.y) %>%
+  rename(Y = Y.x,
+         Stress = Stress.x) %>%
+  write.csv(here("DataOutputs", "all_features_Emote.csv"))
+```
+

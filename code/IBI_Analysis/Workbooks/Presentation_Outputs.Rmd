@@ -1,0 +1,665 @@
+---
+title: "Slides Outputs"
+output: html_notebook
+---
+
+# Load and Prep Data
+
+```{r, include=FALSE}
+library(tidyverse, quietly = T)
+library(caret, quietly = T)
+library(DMwR, quietly = T)
+library(ROSE, quietly = T)
+library(viridis, quietly = T)
+library(DAAG, quietly = T)
+set.seed(4)
+```
+
+
+```{r, include=FALSE}
+#save participants who qualify with both episode and control
+pp = c(201, 202, 207, 214, 215, 217, 218, 219, 226, 228)
+```
+
+```{r}
+features_output = read.csv("../DataOutputs/data_out_20181113.csv")%>%
+  as.tibble()
+```
+
+# Time Domain
+
+Data preprocessing notes:
+
+* Require at least 60 beats per 30 minute observation to process
+* Require at least 2 complete sliding windows per observation to calculate features
+* Require at least 100 beats per sliding window to calculate features
+* Filter out control observations where stress is 4 or higher
+* For each participant, scale & normalise features within participant
+
+## Descriptive Statistics
+
+```{r}
+features_output%>%
+  filter(ID %in% pp)%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Y, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  # group_by(ID, Y)%>%
+  # nest()%>%
+  # mutate(rows = purrr::map(data, nrow))%>%
+  # unnest(rows)%>%
+  # group_by(ID)%>%
+  # mutate(rows = min(rows))%>%
+  # ungroup()%>%
+  # mutate(samp = purrr::map2(data, rows, sample_n))%>%
+  # select(-data, -rows)%>%
+  # unnest(samp)%>%
+  group_by(ID)%>%
+  mutate_at(.vars = vars(SDNN:HRVi), funs(scale))%>% #z score transform
+  ungroup()%>%
+  select(-ID)%>%
+  rename(Class = Y)%>%
+  psych::describeBy(., .$Class, quant=c(.25,.75), mat=TRUE)%>%
+  select(group1, mean, sd)%>%
+  rownames_to_column("Variable")%>%
+  slice(-c(1:2))
+```
+
+## Comparison of Means
+```{r}
+features_output%>%
+  filter(ID %in% pp)%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Y, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  # group_by(ID, Y)%>%
+  # nest()%>%
+  # mutate(rows = purrr::map(data, nrow))%>%
+  # unnest(rows)%>%
+  # group_by(ID)%>%
+  # mutate(rows = min(rows))%>%
+  # ungroup()%>%
+  # mutate(samp = purrr::map2(data, rows, sample_n))%>%
+  # select(-data, -rows)%>%
+  # unnest(samp)%>%
+  group_by(ID)%>%
+  mutate_at(.vars = vars(SDNN:HRVi), funs(scale))%>% #z score transform
+  ungroup()%>%
+  select(-ID)%>%
+  rename(Class = Y)%>%
+  summarise_at(funs(twotPermutation(.[Class == "Control"],
+                                    .[Class != "Control"], 
+                                    plotit = F)),
+               .vars = vars(SDNN:HRVi))
+```
+
+## Plot
+
+```{r}
+features_output%>%
+  filter(ID %in% pp)%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Y, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  # group_by(ID, Y)%>%
+  # nest()%>%
+  # mutate(rows = purrr::map(data, nrow))%>%
+  # unnest(rows)%>%
+  # group_by(ID)%>%
+  # mutate(rows = min(rows))%>%
+  # ungroup()%>%
+  # mutate(samp = purrr::map2(data, rows, sample_n))%>%
+  # select(-data, -rows)%>%
+  # unnest(samp)%>%
+  group_by(ID)%>%
+  mutate_at(.vars = vars(SDNN:HRVi), funs(scale))%>% #z score transform
+  ungroup()%>%
+  select(-ID)%>%
+  rename(Class = Y)%>%
+  psych::describeBy(.,.$Class,quant=c(.25,.75), mat=TRUE)%>%
+  select(group1, mean, se)%>%
+  rownames_to_column("Variable")%>%
+  slice(-c(1:2))%>%
+  mutate(Variable = as.factor(gsub('[[:digit:]]+', '', .$Variable)))%>%
+  ggplot(aes(x=Variable, y=mean, fill=group1, group=group1))+
+  geom_col(position="dodge")+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), position="dodge")+
+  theme_minimal()+
+  scale_fill_viridis(discrete=TRUE, name = "Condition")+
+  labs(title="Standardized Variable Means by Condition")
+```
+
+
+
+## Machine Learning Setup
+
+```{r, include=FALSE, echo=FALSE}
+mydat = features_output%>%
+  filter(ID %in% pp)%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Y, SDNN:HRVi)%>%
+  filter(complete.cases(.))%>%
+  # group_by(ID, Y)%>%
+  # nest()%>%
+  # mutate(rows = purrr::map(data, nrow))%>%
+  # unnest(rows)%>%
+  # group_by(ID)%>%
+  # mutate(rows = min(rows))%>%
+  # ungroup()%>%
+  # mutate(samp = purrr::map2(data, rows, sample_n))%>%
+  # select(-data, -rows)%>%
+  # unnest(samp)%>%
+  group_by(ID)%>%
+  mutate_at(.vars = vars(SDNN:HRVi), funs(scale))%>% #z score transform
+  ungroup()%>%
+  select(-ID)%>%
+  rename(Class = Y)
+
+datasets = list()
+
+ind = createFolds(y = mydat$Class, k=4, list=TRUE, returnTrain = FALSE)
+
+datasets[[1]] = list(data = mydat, folds = ind)
+```
+
+```{r, include=FALSE, echo=FALSE}
+fitGLM = function(datalist){
+  
+  # use the list [dataset, folds] to run caret glm and
+  # return a list [model fit results, predictions]
+  
+  summaries = list()
+  predictions = list()
+  
+  for(fold in 1:4){
+    
+    model = train(Class ~ .,
+            method = "glm",
+            family = binomial,
+            data = datalist$data[-datalist$folds[[fold]],])
+    
+    summaries[[fold]] = summary(model)%>%
+      .$coefficients%>%
+      data.frame()%>%
+      as.tibble()%>%
+      rownames_to_column(var = "Variable")%>%
+      rename(P_Value = Pr...z..,
+             Z_Value = z.value,
+             Std_Error = Std..Error)%>%
+      mutate(Significant = ifelse(P_Value < 0.05, "Significant", "Not Significant"),
+             Fold = fold)
+    
+    predictions[[fold]] = predict(model, 
+                                  newdata = datalist$data[datalist$folds[[fold]],],
+                                  type = "raw")%>%
+      data.frame(pred = ., 
+                 obs = datalist$data[datalist$folds[[fold]],]$Class)
+  }
+  
+  return(list(summaries = summaries, predictions = predictions))
+  
+}
+
+fitRF = function(datalist){
+  
+  # use the list [dataset, folds] to run caret random forest and
+  # return a list [model fit results, predictions]
+  
+  summaries = list()
+  predictions = list()
+  
+  for(fold in 1:4){
+    
+    tc = trainControl("cv", 
+                      number = 10, 
+                      savePredictions=T, 
+                      search = "random",
+                      summaryFunction = twoClassSummary,
+                      classProbs = T)
+    model = train(Class~., 
+                  data=datalist$data[-datalist$folds[[fold]],], 
+                  method="rf", 
+                  metric="ROC", 
+                  tuneLength=15, 
+                  trControl=tc)
+  
+  summaries[[fold]] = randomForest::importance(model$finalModel)%>%
+    as.data.frame()%>%
+    rownames_to_column("Variable")%>%
+    arrange(MeanDecreaseGini)
+  
+  predictions[[fold]] = predict(model, 
+      newdata = datalist$data[datalist$folds[[fold]],],
+      type = "raw")%>%
+      data.frame(pred = ., 
+                 obs = datalist$data[datalist$folds[[fold]],]$Class)
+  
+  }
+  
+  return(list(summaries = summaries, predictions = predictions))
+  
+}
+fitXG = function(datalist){
+  
+  # use the list [dataset, folds] to run caret xgboost and
+  # return a list [model fit results, predictions]
+  
+  summaries = list()
+  predictions = list()
+  for(fold in 1:4){
+    tc = trainControl("cv", 10, 
+                        savePredictions=T, 
+                        search = "random",
+                        summaryFunction = twoClassSummary,
+                        classProbs = T) 
+      
+    model = train(Class ~.,
+                 method = "xgbTree",
+                 data=datalist$data[-datalist$folds[[fold]],],
+                 trControl = tc,
+                 metric = "ROC",
+                 tuneLength = 3)
+    
+    predictions[[fold]] = predict(model, 
+        newdata = datalist$data[datalist$folds[[fold]],],
+        type = "raw")%>%
+        data.frame(pred = ., 
+                   obs = datalist$data[datalist$folds[[fold]],]$Class)
+    }
+  
+  return(list(summaries = summaries, predictions = predictions))
+}
+fitSVM = function(datalist){
+  
+  # use the list [dataset, folds] to run caret SVM and
+  # return a list [model fit results, predictions]
+  summaries = list()
+  predictions = list()  
+  for(fold in 1:4){
+    tc = trainControl("cv", 15, 
+                      savePredictions=T, 
+                      summaryFunction = twoClassSummary,
+                      classProbs = T,
+                      search = "random")
+    
+    model = train(Class ~.,
+                 method = "svmLinear",
+                 data=datalist$data[-datalist$folds[[fold]],],
+                 trControl = tc,
+                 tuneLength = 3,
+                 metric = "ROC")
+    
+    predictions[[fold]] = predict(model, 
+        newdata = datalist$data[datalist$folds[[fold]],],
+        type = "raw")%>%
+        data.frame(pred = ., 
+                   obs = datalist$data[datalist$folds[[fold]],]$Class)
+  }
+  
+  return(list(summaries = summaries, predictions = predictions))
+}
+fitNN = function(datalist){
+  
+  # use the list [dataset, folds] to run caret NN and
+  # return a list [model fit results, predictions]
+  summaries = list()
+  predictions = list() 
+  
+  for(fold in 1:4){
+    
+    tc = trainControl(method = 'cv', number = 50, 
+                    classProbs = TRUE, 
+                    summaryFunction = twoClassSummary, 
+                    savePredictions = TRUE,
+                    search = "random")
+  
+    model = train(Class ~.,
+                 method = "nnet",
+                 data=datalist$data[-datalist$folds[[fold]],],
+                 trControl = tc,
+                 tuneLength = 5,
+                 metric = "ROC")
+    
+    predictions[[fold]] = predict(model, 
+        newdata = datalist$data[datalist$folds[[fold]],],
+        type = "raw")%>%
+        data.frame(pred = ., 
+                   obs = datalist$data[datalist$folds[[fold]],]$Class)
+  }
+  
+  return(list(summaries = summaries, predictions = predictions))
+  
+}
+
+ExtractConfusionMatrix = function(df){
+  
+  df%>%
+    table()%>%
+    confusionMatrix(positive = "Episode")%>%
+    .$byClass%>%
+    t()%>%
+    as.tibble()%>%
+    return()
+}
+```
+
+```{r, echo=FALSE, include=FALSE}
+model_fits = list()
+
+for(dataset in 1:length(datasets)){
+  
+  model_fits[[dataset]] = list(
+    glm  = fitGLM(datasets[[dataset]]),
+    rf = fitRF(datasets[[dataset]]),
+    xgb = fitXG(datasets[[dataset]]),
+    svm = fitSVM(datasets[[dataset]]),
+    nn = fitNN(datasets[[dataset]])
+  )
+  
+}
+```
+
+## Machine Learning Results
+
+```{r}
+do.call(rbind, model_fits[[1]]$glm$summaries)
+```
+
+
+```{r}
+fold = 1:4
+glmResults = data.frame()
+for(x in 1:length(model_fits)){
+  
+  glmResults = model_fits[[x]]$glm$predictions%>%
+    Map(cbind, ., fold=fold)%>%
+    do.call(rbind,.)%>%
+    group_by(fold)%>%
+    nest()%>%
+    mutate(result=lapply(data, ExtractConfusionMatrix))%>%
+    select(-data)%>%
+    unnest()%>%
+    select(-fold)%>%
+    summarise_all(funs(mean))%>%
+    mutate(model=x)%>%
+    select(model, everything())%>%
+    rbind(glmResults,.)
+}
+
+glmResults
+```
+
+```{r}
+glmResults%>%
+  gather(key="key", value="value", -model)%>%
+  mutate(model = as.factor(model))%>%
+  ggplot(aes(x=key,y=value))+
+  geom_bar(aes(fill=model), stat = "identity", position="dodge")+
+  coord_flip()+
+  theme_minimal()+
+  labs(title = "GLM Prediction Results")+
+  scale_fill_viridis(discrete=T)
+```
+
+## Random Forest Results
+
+```{r}
+rfResults = data.frame()
+for(x in 1:length(model_fits)){
+  
+  rfResults = model_fits[[x]]$rf$predictions%>%
+    Map(cbind, ., fold=fold)%>%
+    do.call(rbind,.)%>%
+    group_by(fold)%>%
+    nest()%>%
+    mutate(result=lapply(data, ExtractConfusionMatrix))%>%
+    select(-data)%>%
+    unnest()%>%
+    select(-fold)%>%
+    summarise_all(funs(mean))%>%
+    mutate(model=x)%>%
+    select(model, everything())%>%
+    rbind(rfResults,.)
+}
+
+rfResults
+```
+
+```{r}
+rfResults%>%
+  gather(key="key", value="value", -model)%>%
+  mutate(model = as.factor(model))%>%
+  ggplot(aes(x=key,y=value))+
+  geom_bar(aes(fill=model), stat = "identity", position="dodge")+
+  coord_flip()+
+  theme_minimal()+
+  labs(title = "Random Forest Prediction Results")+
+  scale_fill_viridis(discrete=T)
+```
+
+## XGBoost Results
+
+```{r}
+xgbResults = data.frame()
+for(x in 1:length(model_fits)){
+  
+  xgbResults = model_fits[[x]]$xgb$predictions%>%
+    Map(cbind, ., fold=fold)%>%
+    do.call(rbind,.)%>%
+    group_by(fold)%>%
+    nest()%>%
+    mutate(result=lapply(data, ExtractConfusionMatrix))%>%
+    select(-data)%>%
+    unnest()%>%
+    select(-fold)%>%
+    summarise_all(funs(mean))%>%
+    mutate(model=x)%>%
+    select(model, everything())%>%
+    rbind(xgbResults,.)
+}
+
+xgbResults
+```
+
+```{r}
+xgbResults%>%
+  gather(key="key", value="value", -model)%>%
+  mutate(model = as.factor(model))%>%
+  ggplot(aes(x=key,y=value))+
+  geom_bar(aes(fill=model), stat = "identity", position="dodge")+
+  coord_flip()+
+  theme_minimal()+
+  labs(title = "XG Boost Prediction Results")+
+  scale_fill_viridis(discrete=T)
+```
+
+## SVM Results
+
+```{r}
+svmResults = data.frame()
+for(x in 1:length(model_fits)){
+  
+  svmResults = model_fits[[x]]$svm$predictions%>%
+    Map(cbind, ., fold=fold)%>%
+    do.call(rbind,.)%>%
+    group_by(fold)%>%
+    nest()%>%
+    mutate(result=lapply(data, ExtractConfusionMatrix))%>%
+    select(-data)%>%
+    unnest()%>%
+    select(-fold)%>%
+    summarise_all(funs(mean))%>%
+    mutate(model=x)%>%
+    select(model, everything())%>%
+    rbind(svmResults,.)
+}
+
+svmResults
+```
+
+```{r}
+svmResults%>%
+  gather(key="key", value="value", -model)%>%
+  mutate(model = as.factor(model))%>%
+  ggplot(aes(x=key,y=value))+
+  geom_bar(aes(fill=model), stat = "identity", position="dodge")+
+  coord_flip()+
+  theme_minimal()+
+  labs(title = "SVM Prediction Results")+
+  scale_fill_viridis(discrete=T)
+```
+
+
+## NeuralNetwork Results
+
+```{r}
+nnResults = data.frame()
+for(x in 1:length(model_fits)){
+  
+  nnResults = model_fits[[x]]$nn$predictions%>%
+    Map(cbind, ., fold=fold)%>%
+    do.call(rbind,.)%>%
+    group_by(fold)%>%
+    nest()%>%
+    mutate(result=lapply(data, ExtractConfusionMatrix))%>%
+    select(-data)%>%
+    unnest()%>%
+    select(-fold)%>%
+    summarise_all(funs(mean))%>%
+    mutate(model=x)%>%
+    select(model, everything())%>%
+    rbind(nnResults,.)
+}
+
+nnResults
+```
+
+```{r}
+nnResults%>%
+  gather(key="key", value="value", -model)%>%
+  mutate(model = as.factor(model))%>%
+  ggplot(aes(x=key,y=value))+
+  geom_bar(aes(fill=model), stat = "identity", position="dodge")+
+  coord_flip()+
+  theme_minimal()+
+  labs(title = "Neural Network Prediction Results")+
+  scale_fill_viridis(discrete=T)
+```
+
+Overall, the best models are arranged by balanced accuracy below:
+```{r}
+method = c("GLM", "RandomForest", "XGBoost", "SVM", "NeuralNetwork")
+Map(cbind, list(glmResults, rfResults, xgbResults, svmResults, nnResults), method = method)%>%
+  do.call(rbind,.)%>%
+  arrange(-`Balanced Accuracy`)
+```
+
+# Frequency Domain
+
+## Machine Learning
+
+```{r, include=FALSE, echo=FALSE}
+# Here we set the train and test set
+mydat = features_output%>%
+  filter(ID %in% pp)%>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  select(ID, Y, Avg_niHR:LFHF_6)%>%
+  rename(Class = Y)%>%
+  mutate(Class = as.factor(Class))%>%
+  mutate_at(., .funs = funs(ifelse(. > 3630, 3630, 
+                                   ifelse(. < 80, 80, .))),
+            .vars = vars(matches("^HF_.*")))%>%
+  mutate_at(., .funs = funs(ifelse(. > 1010, 101,
+                                   ifelse(. < 190, 190, .))), 
+            .vars = vars(matches("^LF_.*")))%>%
+  mutate_at(., .funs = funs(ifelse(. > 12, 12,
+                                   ifelse(. < 1, 1, .))), 
+            .vars = vars(matches("LFHF_.*")))
+
+#set up a list of unnamed data sets based on variable names
+# loop through list and select variables dynamically
+# partition at 70%
+# downsample training set
+
+datasets = list()
+
+for(n in 1:6){
+  
+  temp_dat = mydat%>%
+    select(ID, Class, Class, Avg_niHR:Avg_HR, contains(as.character(n)))%>%
+    filter(complete.cases(.))%>%
+    group_by(ID, Class)%>%
+    nest()%>%
+    mutate(rows = purrr::map(data, nrow))%>%
+    unnest(rows)%>%
+    group_by(ID)%>%
+    mutate(rows = min(rows))%>%
+    ungroup()%>%
+    mutate(samp = purrr::map2(data, rows, sample_n))%>%
+    select(-data, -rows)%>%
+    unnest(samp)%>%
+    select(-ID)
+    
+  
+   ind = createFolds(y = temp_dat$Class, k=4, list=TRUE, returnTrain = FALSE)
+   
+   datasets[[n]] = list(data = temp_dat, folds = ind)
+    
+}
+
+#statistically significant diff variables
+temp_dat = mydat%>%
+  select(ID, Class, Avg_niHR, End_niHR, Avg_HR, HF_4, LF_3)%>%
+  filter(complete.cases(.))%>%
+  group_by(ID, Class)%>%
+  nest()%>%
+  mutate(rows = purrr::map(data, nrow))%>%
+  unnest(rows)%>%
+  group_by(ID)%>%
+  mutate(rows = min(rows))%>%
+  ungroup()%>%
+  mutate(samp = purrr::map2(data, rows, sample_n))%>%
+  select(-data, -rows)%>%
+  unnest(samp)%>%
+  select(-ID)
+
+ind = createFolds(y = temp_dat$Class, k=4, list=TRUE, returnTrain = FALSE)
+
+datasets[[7]] = list(data = temp_dat, folds = ind)
+```
+
+## Descriptive Statistics
+
+```{r}
+lapply(datasets, function(x) psych::describeBy(x$data, x$data$Class, quant=c(.25,.75), mat=TRUE))%>%
+  do.call(rbind,.)%>%
+  rownames_to_column("Variable")%>%
+  filter(!grepl(pattern = "Class.*", x = .$Variable))%>%
+  mutate(Variable = gsub('[[:digit:]]*$', '', .$Variable))%>%
+  mutate(section = rep(1:14, ))
+  #mutate(Variable = ifelse(grepl(".*HR.*", .$Variable), gsub('[[:digit:]]$', '', .$Variable), .$Variable))
+  
+  ggplot(aes(x=Variable, y=mean, fill=group1, group=group1))+
+  geom_col(position="dodge")+
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), position="dodge")+
+  theme_minimal()+
+  scale_fill_viridis(discrete=TRUE, name = "Condition")+
+  labs(title="Standardized Variable Means by Condition")
+```
+
+
+```{r, echo=FALSE, include=FALSE}
+model_fits2 = list()
+
+for(dataset in 1:length(datasets)){
+  
+  model_fits2[[dataset]] = list(
+    glm  = fitGLM(datasets[[dataset]]),
+    rf = fitRF(datasets[[dataset]]),
+    xgb = fitXG(datasets[[dataset]]),
+    svm = fitSVM(datasets[[dataset]]),
+    nn = fitNN(datasets[[dataset]])
+  )
+  
+}
+```

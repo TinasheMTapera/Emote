@@ -1,0 +1,622 @@
+---
+title: "Summarising EDA Features"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r}
+library(tidyverse)
+library(purrr)
+library(stringr)
+library(furrr)
+library(lubridate)
+library(broom)
+library(knitr)
+library(readxl, quietly = TRUE)
+```
+
+In this notebook we summarise and visualise the EDA features we extracted.
+
+```{r}
+eda_df <- list.files("/Users/mac/GDriveDocs/Quantitative Psychology & Statistics Lab/Emote/EDA_Analysis/outputs",
+                     pattern = ".rds",
+                     recursive = TRUE,
+                     full.names = TRUE) %>%
+  future_map_dfr(.f = function(x) {
+    
+    df <- readRDS(x)
+    df$ID <- str_extract(x, "[[:digit:]]+")
+    
+    df
+  })
+
+events = read_excel("/Users/mac/GDriveDocs/Quantitative Psychology & Statistics Lab/Emote/DataOutputs/UpdatedSurveys_180713.xlsx") %>%
+  group_by(ID) %>%
+  arrange(ID, Event) %>%
+  ungroup() %>%
+  filter(!is.na(ID)) %>%
+  mutate(Event = ymd_hms(Event)) %>%
+  mutate(start = Event - 60 * 30) %>%
+  mutate(intervals = interval(Event, start))
+  
+
+remove_overlaps <- function(intervals){
+  
+  overlaps = rep(FALSE, length(intervals))
+  
+  for(l in 1:(length(intervals)-1)){
+    if(!(is.na(intervals[l]) & is.na(intervals[l+1]))){
+      if(int_overlaps(intervals[l], intervals[l+1])){
+        overlaps[l] = TRUE
+      }
+    }
+  }
+  
+  return(overlaps)
+}
+
+events <- events %>%
+  mutate(ID = as.factor(ID)) %>%
+  group_by(ID) %>%
+  mutate(overlapped = remove_overlaps(intervals)) %>%
+  select(-intervals) %>%
+  filter(overlapped ==  FALSE) %>%
+  select(-overlapped) %>%
+  ungroup()
+
+eda_df <- events %>%
+  select(ID, EmotionalEatingEpisodes, Event, Stress) %>%
+  mutate(ID = as.character(ID)) %>%
+  left_join(eda_df, by = c("ID", "Event"))
+```
+
+# Accelerometer Features
+
+## Step Count
+
+`Step count` summaries for both episodes and controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Step count`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  do(tidy(summary(.$`Step count`))) %>%
+  kable(caption = "\"Step Count\" Summary During Episodes and Controls")
+```
+
+`Step count` summaries for episodes:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Step count`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y == "Episode")%>% #filter high stress
+  do(tidy(summary(.$`Step count`))) %>%
+  kable(caption = "\"Step Count\" Summary During Episodes")
+```
+
+`Step count` summaries for controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Step count`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y != "Episode")%>% #filter high stress
+  do(tidy(summary(.$`Step count`))) %>%
+  kable(caption = "\"Step Count\" Summary During Controls")
+```
+
+
+Visualised:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Step count`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  ggplot(aes(x=ID,y=`Step count`)) +
+  geom_boxplot(aes(fill = Y)) +
+  labs(title = "Visualising Step Count") +
+  theme_minimal() +
+  coord_flip()
+```
+
+## Mean step time during observations
+
+`Mean step time during observation` summaries for both episodes and controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Mean step time during movement`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  do(tidy(summary(.$`Mean step time during movement`))) %>%
+  kable(caption = "\"Mean step time during observation\" Summary During Episodes and Controls")
+```
+
+`Mean step time during observation` summaries for episodes:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Mean step time during movement`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Episode") & Y == "Episode")%>% #filter high stress
+  do(tidy(summary(.$`Mean step time during movement`))) %>%
+  kable(caption = "\"Mean step time during observation\" Summary During Episodes")
+```
+
+`Mean step time during observation` summaries for controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Mean step time during movement`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y != "Episode")%>% #filter high stress
+  do(tidy(summary(.$`Mean step time during movement`))) %>%
+  kable(caption = "\"Mean step time during observation\" Summary During Controls")
+```
+
+
+Visualised:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Mean step time during movement`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  ggplot(aes(x=ID,y=`Mean step time during movement`)) +
+  geom_boxplot(aes(fill = Y)) +
+  labs(title = "Visualising Mean step time during observation",
+       caption = "Time in seconds") +
+  theme_minimal() +
+  coord_flip()
+```
+
+## Percent Stillness during observations
+
+`Percent Stillness` summaries for both episodes and controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Percent stillness`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  do(tidy(summary(.$`Percent stillness`))) %>%
+  kable(caption = "\"Percent stillness during observation\" Summary During Episodes and Controls")
+```
+
+`Percent stillness during observation` summaries for episodes:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Percent stillness`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Episode") & Y == "Episode")%>% #filter high stress
+  do(tidy(summary(.$`Percent stillness`))) %>%
+  kable(caption = "\"Percent stillness during observation\" Summary for Episodes")
+```
+
+`Percent stillness during observation` summaries for controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Percent stillness`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y != "Episode")%>% #filter high stress
+  do(tidy(summary(.$`Percent stillness`))) %>%
+  kable(caption = "\"Percent stillness during observation\" Summary for Controls")
+```
+
+
+Visualised:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         `Percent stillness`,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  ggplot(aes(x=ID,y=`Percent stillness`)) +
+  geom_boxplot(aes(fill = Y)) +
+  labs(title = "Visualising Percent stillness during observations") +
+  theme_minimal() +
+  coord_flip()
+```
+
+# Temperature
+
+`Temperature` summaries for both episodes and controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         Temp,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  do(tidy(summary(.$Temp))) %>%
+  kable(caption = "\"Temperature during observation\" Summary During Episodes and Controls")
+```
+
+`Temperature during observation` summaries for episodes:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         Temp,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Episode") & Y == "Episode") %>% #filter high stress
+  do(tidy(summary(.$Temp))) %>%
+  kable(caption = "\"Temperature during observation\" Summary for Episodes")
+```
+
+`Temperature during observation` summaries for controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         Temp,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y != "Episode")%>% #filter high stress
+  do(tidy(summary(.$Temp))) %>%
+  kable(caption = "\"Temperature during observation\" Summary for Controls")
+```
+
+Visualised:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         Temp,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  ggplot(aes(x=ID,y=Temp)) +
+  geom_boxplot(aes(fill = Y)) +
+  labs(title = "Visualising Temperature during observations") +
+  theme_minimal() +
+  coord_flip()
+```
+
+Lots of outliers =D
+
+# Motion
+
+## Aggregate motion during observations
+
+This is `sqrt(X^2+Y^2+Z^2)`
+
+`Motion` summaries for both episodes and controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         motion,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  do(tidy(summary(.$motion))) %>%
+  kable(caption = "\"3 dimensional motion during observation\" Summary During Episodes and Controls")
+```
+
+`Motion during observation` summaries for episodes:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         motion,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y == "Episode") %>% #filter high stress
+  do(tidy(summary(.$motion))) %>%
+  kable(caption = "\"3 dimensional motion during observation\" Summary for Episodes")
+```
+
+`Motion during observation` summaries for controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         motion,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y != "Episode")%>% #filter high stress
+  do(tidy(summary(.$motion))) %>%
+  kable(caption = "\"3 dimensional motion during observation\" Summary for Controls")
+```
+
+Visualised:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         motion,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  ggplot(aes(x=ID,y=motion)) +
+  geom_boxplot(aes(fill = Y)) +
+  labs(title = "Visualising 3 Dimensional motion during observations") +
+  theme_minimal() +
+  coord_flip()
+```
+
+Even more outliers! =D
+
+# EDA Peaks
+
+## Number of Peaks by Participant
+
+```{r}
+eda_df %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         peaks,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control"),
+         peaks = as.numeric(peaks)) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  group_by(ID) %>%
+  summarise(peaks2 = sum(peaks, na.rm = TRUE)) %>%
+  ggplot(aes(x=ID,y=peaks2)) +
+    geom_col()+
+    theme_minimal() +
+    labs(title = "Number of EDA Peaks per Participant", y = "Number of Peaks")
+
+```
+
+## Number of Peaks by Condition
+
+```{r}
+eda_df %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         peaks,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control"),
+         peaks = as.numeric(peaks)) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  group_by(ID, Y) %>%
+  summarise(peaks2 = sum(peaks, na.rm = TRUE)) %>%
+  ggplot(aes(x=ID,y=peaks2)) +
+    geom_col(aes(fill = Y), position = "dodge") +
+    theme_minimal() +
+    labs(title = "Number of EDA Peaks per Participant & Condition", y = "Number of Peaks")
+
+```
+
+# EDA Values
+
+## Amplitude
+
+`Peak Amplitude` summaries for both episodes and controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         amp,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  do(tidy(summary(.$amp))) %>%
+  kable(caption = "\"EDA Peak Amplitude\" Summary During Episodes and Controls")
+```
+
+Peak amplitude summaries for episodes:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         amp,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y == "Episode")%>% #filter high stress
+  do(tidy(summary(.$amp))) %>%
+  kable(caption = "\"Peak Amplitude\" Summary During Episodes")
+```
+
+`Peak Amplitude` summaries for controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         amp,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y != "Episode")%>% #filter high stress
+  do(tidy(summary(.$amp))) %>%
+  kable(caption = "\"Peak Amplitude\" Summary During Episodes")
+```
+
+
+Visualised:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         amp,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  ggplot(aes(x=ID,y=amp)) +
+  geom_boxplot(aes(fill = Y)) +
+  labs(title = "Peak Amplitudes during observations") +
+  theme_minimal() +
+  coord_flip()
+```
+
+## Max Derivative
+
+This is defined as max derivative within 1 second of apex of SCR
+
+`Max Deriv` summaries for both episodes and controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         max_deriv,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control"))%>% #filter high stress
+  do(tidy(summary(.$max_deriv))) %>%
+  kable(caption = "\"Max Derivative\" Summary During Episodes and Controls")
+```
+
+`Max Derivative` summaries for episodes:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         max_deriv,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y == "Episode")%>% #filter high stress
+  do(tidy(summary(.$max_deriv))) %>%
+  kable(caption = "\"Max Derivative\" Summary During Episodes")
+```
+
+`Max Derivative` summaries for controls:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         max_deriv,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control") & Y != "Episode")%>% #filter high stress
+  do(tidy(summary(.$max_deriv))) %>%
+  kable(caption = "\"Max Derivative\" Summary During Episodes")
+```
+
+
+Visualised:
+```{r}
+eda_df %>%
+  group_by(ID) %>%
+  select(ID, 
+         Event, 
+         EmotionalEatingEpisodes,
+         max_deriv,
+         Stress) %>%
+  distinct() %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 1, "Episode", "Control")) %>%
+  filter(!(Stress > 4 & Y == "Control")) %>%
+  ggplot(aes(x=ID,y=max_deriv)) +
+  geom_boxplot(aes(fill = Y)) +
+  labs(title = "Max Derivative Features during observations") +
+  theme_minimal() +
+  coord_flip()
+```
+

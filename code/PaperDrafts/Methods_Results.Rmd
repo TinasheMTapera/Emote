@@ -1,0 +1,466 @@
+---
+title: "Methods & Results Section"
+output:
+  bookdown::word_document2:
+    toc: false
+  bookdown::html_document2: null
+bibliography: citations.bib
+always_allow_html: yes
+---
+
+```{r packages and setup, include=FALSE, warning=FALSE}
+suppressPackageStartupMessages(
+  {
+    library(tidyverse, quietly = TRUE)
+    library(knitr, quietly = TRUE)
+    library(DAAG, quietly = TRUE)
+    library(here, quietly = TRUE)
+    library(naniar, quietly = TRUE)
+    library(kableExtra, quietly = TRUE)
+    library(ggsignif, quietly = TRUE)
+    library(viridis, quietly = TRUE)
+    library(forcats, quietly = TRUE)
+  }
+)
+
+p_format <- function(vec, thresh = 0.05, star1 = 0.05, star2 = 0.01, star3 = 0.001){
+  
+  vec2 = NULL
+  vec2 <- sapply(vec, formatC)
+  
+  for(x in 1:length(vec)){
+    if(vec[x] <= star3){
+      vec2[x] = "< 0.001 ***"
+    }
+    else if(vec[x] <= star2){
+      vec2[x] = "< 0.01 **"
+    }
+    else if(vec[x] <= star1){
+      vec2[x] = "< 0.05 *"
+    }
+  }
+  vec2
+}
+
+permutation_plot <- function(df, height = 1.2, tip = 0.1){
+  
+  n <- df %>%
+    rowid_to_column() %>%
+    group_by(variable) %>%
+    arrange(-Mean) %>%
+    slice(1) %>%
+    pull(rowid)
+  y_position <- df$Mean[n] * height
+  
+  plt  <- df %>% {
+    ggplot(., aes(x=variable, y=Mean, fill  = Group)) +
+        geom_col(position = "dodge") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+        geom_signif(annotations = sapply(.$p.val[n], p_format),
+                    xmin = seq(0.8, length.out = length(n)),
+                    xmax = seq(1.2, length.out = length(n)),
+                    y_position = y_position,
+                    tip_length=tip
+                    ) +
+        scale_fill_viridis_d(labels = c("Control", "Episode"))
+  }
+  plt
+}
+
+set.seed(1342)
+```
+
+```{r load data, include=FALSE, warning=FALSE, message=FALSE}
+# all initial surveys
+all_surveys <- read_csv(here('DataOutputs','UpdatedSurveys_180713.csv')) %>%
+  filter(complete.cases(.)) %>%
+  mutate(Y = ifelse(EmotionalEatingEpisodes == 2, 'Control', 'Episode'))
+
+# data used for frequency domain analysis
+df_freq <- read_csv(here('DataOutputs','data_out_20181113 copy.csv'))
+
+# data used for time domain analysis
+df_time <- read_csv(here('DataOutputs','data_out copy.csv'))
+```
+# Methods
+Data analyses were carried out in `r R.version$version.string` and Python 2.7. In accordance with previous studies examining the relation between HRV and discrete eating episodes [@friesen_lin_schurman_andre_callum_2007; @harthoorn_dransfield_2007; @ranzenhofer2016], physiological data collected in the 30-minute period preceding the eating episode were examined. For each participant, the inter-beat interval (IBI) for each self-reported survey was selected, where surveys were either self-reported at the time of an eating episode, or pseudo-randomly triggered in the app. This resulted in an initial total of $n=$ `r all_surveys %>% filter(Y == "Episode") %>% nrow()` emotional eating episodes and $n=$ `r all_surveys %>% filter(Y == "Control") %>% nrow()` control episodes before cleaning the data.
+
+Using the RHRV package [@R-RHRV], IBI data streams were filtered, interpolated, and artifacts were removed, using thresholds and parameters in compliance with normative reported values for heart rate variability features [@shaffer_ginsberg_2017]. Observations that did not meet normative criteria were removed. Consistent with existing research, features of heart rate variability were extracted from both the time and frequency domain to measure both the amount of variability and the amount of signal energy in the 30-minute period [@shaffer_ginsberg_2017; @Rubin:2016:TFC:3021319.3021332].
+  
+  The following heart rate variability features were extracted from the IBI streams for each observation in the time domain: *SDNN* (Standard Deviation of all filtered inter-beat intervals); *SDANN* (Standard Deviation of inter-beat intervals between all successive heartbeats); *SDNNIX* (Mean of the standard deviations of all the filtered inter-beat intervals for each 5 min segment of the IBI stream); *pNN50* (Percentage of successive inter-beat intervals that differ by more than 50 ms); *SDSD* (Standard Deviation of Successive Differences of inter-beat intervals); *rMSSD* (Root Mean Square of Successive Differences); *IRRR* (length of the interval determined by the first and the third quantile of the inter-beat interval); *MADRR* (Median of the Absolute values of the successive Differences between the inter-beat intervals); *TINN* (Triangular Interpolation of inter-beat interval histogram); and *HRVi* (Heart Rate Variability index) [@R-RHRV].
+  
+  *SDNN* reflects the power of the components responsible for variability in heart rhythm, while *SDANN*, *SDNNIX*, *pNN50*, *SDSD*, *rMSSD*, *IRRR*, and *MADRR* reflect different statistical aspects of the high frequency variation in heart rhythm. Finally, *TINN* and *HRVi* represent geometric measures calculated from the density distribution of inter-beat intervals [@R-RHRV].
+  
+  In the frequency domain, features extracted included the mean non-interpolated heart rate (*mean niHR*), the mean interpolated Heart Rate (*mean HR*), and the heart rate values at the start and end of the 30 minute window (*Start HR*, *End HR*). Additional frequency domain features were extracted from the 30 minute streams by applying a Fourier transform to the heart rate signal, resulting in a spectrogram of the heart rate in the low and high frequency ranges. To extract a sufficient amount of information from these spectograms and increase the variance of our data, the spectrogram was split into 5 minute windows, as has been done previously in studies using heart rate variability to predict event-level behavior [@Rubin:2016:TFC:3021319.3021332]. Mean features were extracted from each of these windows — the mean Low Frequency signal ($LF_1$, $LF_2$,… $LF_6$), the mean High Frequency signal ($HF_1$, $HF_2$,… $HF_6$), and the mean Low Frequency-High Frequency Ratio ($LFHF_1$, $LFHF_2$,… $LFHF_6$).
+  
+  In order to examine any differences between means of the features, and address the issue of group imbalance affecting statistical power, we conducted between-groups permutation T-tests with each variable in the time and frequency domain [@R-DAAG; @good2013permutation]. Then, using the CARET package [@R-caret], a Support Vector Machine with a polynomial kernel was implemented to predict episodes from controls. In order to address the group imbalance in this stage, all features were standardized, while controls were randomly downsampled and episodes were randomly upsampled using the ROSE package [@R-ROSE]. To evaluate model performance, models were tested using 4-fold cross validation, training models on 3/4 of the data and using the remaining data evaluate the model accuracy, specificity, and sensitivity.
+  
+# Results
+
+## Missingness
+```{r source-missingness, echo = FALSE}
+df_time_nrow <- df_time %>% 
+  # use params threshold = 250, windows = 2
+  filter(threshold == 250 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  select(-c(winds, threshold, index, when, Event, Stress, ID), Y, SDNN:HRVi) %>%
+  group_by(Y) %>%
+  count()
+
+df_freq_nrow <- df_freq %>%
+  # use params threshold = 100, windows = 2
+  filter(threshold == 100 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  select(-c(winds, threshold, index, when, Event, Stress, ID), Y, SDNN:HRVi) %>%
+  group_by(Y) %>%
+  count()
+```
+
+
+(ref:missingness-time) Completeness of Features in the Time Domain
+
+(ref:missingness-time-tab) Number of Time Domain Observations
+
+(ref:missingness-freq) Completeness of Features in the Frequency Domain
+
+(ref:missingness-freq-tab) Number of Frequency Domain Observations
+
+
+  After cleaning the dataset of erroneous surveys (e.g. no usable IBI data; overlapping survey responses; control observations with high self-reported stress), and filtering IBI streams that did not meet filtering quality criteria for preprocessing, the data consisted of $n=$ `r df_time_nrow %>% filter(Y == "Episode") %>% pull(n)` emotional eating episodes and $n=$ `r df_time_nrow %>% filter(Y == "Control") %>% pull(n)` controls. Of these clean observations, HRV features were extracted from the IBI streams, although even with filtering, many IBI streams were too sparse to compute HRV features. Figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate the completeness of data in the extracted time and frequency domain features, with tables \@ref(tab:missingness-time-tab) and \@ref(tab:missingness-freq-tab) showing the final number of observations used for analysis. Much of the data missing from the time domain is due to the fact that these features derived from SDNN and are dependent on having sufficient data in this feature.
+
+
+```{r missingness-time, fig.width=9, fig.asp=1, echo = FALSE, fig.cap='(ref:missingness-time)'}
+df_time %>% 
+  # use params threshold = 250, windows = 2
+  filter(threshold == 250 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  select(-c(winds, threshold, index, when, Event, Stress, ID, Y), SDNN:HRVi) %>%
+  vis_miss(.) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r missingness-time-tab, echo = FALSE, warning = FALSE, message = FALSE, results='asis'}
+df_time %>% 
+  # use params threshold = 250, windows = 2
+  filter(threshold == 250 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  select(-c(winds, threshold, index, when, Event, Stress, ID), Y, SDNN:HRVi) %>%
+  group_by(Y) %>%
+  summarise_all(funs(sum(!is.na(.)))) %>%
+  t() %>%
+  kable(caption = '(ref:missingness-time-tab)') %>%
+  kable_styling()
+```
+
+
+```{r missingness-freq, fig.width=9, fig.asp=1, fig.cap='(ref:missingness-freq)', echo = FALSE}
+df_freq %>% 
+  # use params threshold = 100, windows = 2
+  filter(threshold == 100 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  select(-c(winds, threshold, index, when, Event, Stress, ID, Y)) %>%
+  select(Avg_niHR:LFHF_6) %>%
+  vis_miss(.) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r missingness-freq-tab, echo = FALSE, warning = FALSE, message = FALSE, results='asis'}
+df_freq %>% 
+  # use params threshold = 250, windows = 2
+  filter(threshold == 100 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  # select frequency domain
+  select(-c(winds, threshold, index, when, Event, Stress, ID)) %>%
+  select(Y, Avg_niHR:LFHF_6) %>%
+  group_by(Y) %>%
+  summarise_all(funs(sum(!is.na(.)))) %>%
+  t() %>%
+  kable(caption = '(ref:missingness-freq-tab)') %>%
+  kable_styling() %>%
+  kableExtra::group_rows("Heart Rate", 2, 5) %>%
+  kableExtra::group_rows("High Frequency", 6, 11) %>%
+  kableExtra::group_rows("Low Frequency", 12, 17) %>%
+  kableExtra::group_rows("LF-HF Ratio", 18, 23)
+```
+
+## Comparison of Means
+
+```{r source-tests, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+df_time_summaries <- df_time %>% 
+  # use params threshold = 250, windows = 2
+  filter(threshold == 250 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  # select time domain
+  select(-c(winds, threshold, index, when, Event, Stress, ID), Y, SDNN:HRVi) %>%
+  # use summarise_at to create within variable summaries
+  summarise_at(
+    .funs = funs(
+      
+      # for each variable, count non-NA
+      n = length(.[complete.cases(.)]),
+      n.control = length(.[complete.cases(.) & Y == "Control"]),
+      n.episode = length(.[complete.cases(.) & Y != "Control"]),
+      
+      # for each variable, calculate the mean, removing NA in each
+      mean = mean(., na.rm = TRUE),
+      mean.control = mean(.[Y == "Control"], na.rm = TRUE),
+      mean.episode = mean(.[Y != "Control"], na.rm = TRUE),
+      
+      # for each variable, calculate the sd, removing NA in each
+      sd = sd(., na.rm = TRUE),
+      sd.control = sd(.[Y == "Control"], na.rm = TRUE),
+      sd.episode = sd(.[Y != "Control"], na.rm = TRUE),
+      
+      # for each variable, run TwoT perm between control and episode, removing NA in each
+      p.val = twotPermutation(.[Y == "Control" & !is.na(.)],
+                              .[Y != "Control" & !is.na(.)],
+                              nsim = 10000, plotit = F)
+      ),
+    .vars = vars(SDNN:HRVi)
+    ) %>% 
+  gather(key, value) %>%
+  separate(key, c("variable", "statistic"), sep = "_")
+
+df_freq_summaries <- df_freq %>% 
+  # use params threshold = 250, windows = 2
+  filter(threshold == 100 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  # select frequency domain
+  select(-c(winds, threshold, index, when, Event, Stress, ID)) %>%
+  select(Y, Avg_niHR:LFHF_6) %>%
+  
+  # truncate frequency power bands
+  mutate_at(., .funs = funs(ifelse(. > 3630, 3630, 
+                                   ifelse(. < 80, 80, .))),
+            .vars = vars(matches("^HF_.*")))%>%
+  mutate_at(., .funs = funs(ifelse(. > 1010, 101,
+                                   ifelse(. < 190, 190, .))), 
+            .vars = vars(matches("^LF_.*")))%>%
+  mutate_at(., .funs = funs(ifelse(. > 12, 12,
+                                   ifelse(. < 1, 1, .))), 
+            .vars = vars(matches("LFHF_.*"))) %>%
+  
+  # use summarise_at to create within variable summaries
+  summarise_at(
+    .funs = funs(
+      
+      # for each variable, count non-NA
+      n = length(.[complete.cases(.)]),
+      n.control = length(.[complete.cases(.) & Y == "Control"]),
+      n.episode = length(.[complete.cases(.) & Y != "Control"]),
+      
+      # for each variable, calculate the mean, removing NA in each
+      mean = mean(., na.rm = TRUE),
+      mean.control = mean(.[Y == "Control"], na.rm = TRUE),
+      mean.episode = mean(.[Y != "Control"], na.rm = TRUE),
+      
+      # for each variable, calculate the sd, removing NA in each
+      sd = sd(., na.rm = TRUE),
+      sd.control = sd(.[Y == "Control"], na.rm = TRUE),
+      sd.episode = sd(.[Y != "Control"], na.rm = TRUE),
+      
+      # for each variable, run TwoT perm between control and episode, removing NA in each
+      p.val = twotPermutation(.[Y == "Control" & !is.na(.)],
+                              .[Y != "Control" & !is.na(.)],
+                              nsim = 10000, plotit = F)
+      ),
+    .vars = vars(Avg_niHR:LFHF_6)
+    ) %>% 
+  gather(key, value) %>%
+  separate(key, c("variable", "statistic"), sep = "_(?!.*_)")
+
+```
+
+(ref:timeSummary) Summary of Features in the Time Domain
+
+The mean values for each time-domain features is shown in Table \@ref(tab:timeSummary) below:
+
+```{r timeSummary, echo = FALSE, warning = FALSE, message = FALSE, results='asis'}
+
+df_time_summaries %>%
+  filter(statistic != "p.val") %>%
+  filter(!str_detect(statistic, "control|episode")) %>%
+  spread(key = statistic, value = value) %>%
+  select(variable, n, mean, sd) %>% 
+  kable(caption = '(ref:timeSummary)') %>%
+  kable_styling()
+  
+```
+
+Using a Two *t* permutation test run between episodes and controls, none of the time-domain variables were found to be significantly different, shown in Table \@ref(tab:timeComparison).
+
+(ref:timeComparison) Between-Groups Permutation *t*-test of Time Domain Features
+
+(ref:timeComparisonPlot) Between-Groups Permutation *t*-test of Time Domain Features
+
+
+```{r timeComparison, echo = FALSE, warning = FALSE, message = FALSE}
+df_time_summaries %>%
+  filter(str_detect(statistic, "control|episode|p.val")) %>%
+  spread(key = statistic, value = value) %>%
+  select(-p.val, everything()) %>%
+  kable(digits=2, caption = '(ref:timeComparison)') %>%
+  kable_styling()
+```
+
+```{r timeComparisonPlot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:timeComparisonPlot)', fig.width=9, fig.asp=1}
+df_time_summaries %>%
+  filter(str_detect(statistic, "control|episode|p.val")) %>%
+  spread(key = statistic, value = value) %>%
+  select(-p.val, everything()) %>%
+  gather("Group", "Mean", mean.control:mean.episode) %>%
+  permutation_plot(., tip = 0.01)+
+    labs(caption = expression(~italic(p)~"-values for permutation "~italic(t)~"-test with 10,000 permutations shown"))
+```
+
+(ref:freqSummary) Summary of Features in the Frequency Domain
+
+A similar approach was taken to analyze the frequency domain. Table \@ref(tab:freqSummary) below outlines the mean values of features:
+
+```{r freqSummary, echo = FALSE, warning = FALSE, message = FALSE}
+order = c("Avg_HR", "Avg_niHR", "Start_niHR", "End_niHR",
+          paste0("HF_", 1:6),
+          paste0("LF_", 1:6),
+          paste0("LFHF_", 1:6))
+df_freq_summaries %>%
+  filter(statistic != "p.val") %>%
+  filter(!str_detect(statistic, "control|episode")) %>%
+  spread(key = statistic, value = value) %>%
+  select(variable, n, mean, sd) %>%
+  slice(match(order, variable)) %>%
+  kable(digits=2, caption = '(ref:freqSummary)') %>%
+  kable_styling() %>%
+  kableExtra::group_rows("Heart Rate", 1, 4) %>%
+  kableExtra::group_rows("High Frequency", 5, 10) %>%
+  kableExtra::group_rows("Low Frequency", 11, 16) %>%
+  kableExtra::group_rows("LF-HF Ratio", 17, 22)
+```
+
+(ref:freqComparison) Between-Groups Permutation *t*-test of Frequency Domain Features
+
+(ref:freqComparisonPlot) Between-Groups Permutation *t*-test of Frequency Domain Features: a) Heart Rate Features; b) High Frequency Features; c) Low Frequency Features d) Low Frequency-High Frequency Ratio Features
+
+Using the same Two-*t* permutation approach, we found signficant differences in means for Average Heart Rate, Average non-interpolated Heart Rate, Ending non-interpolated Heart Rate, and the LF-HF ratio in the third window, shown in Table \@ref(tab:freqComparison)
+```{r freqComparison, echo = FALSE, warning = FALSE, message = FALSE}
+df_freq_summaries %>%
+  filter(str_detect(statistic, "control|episode|p.val")) %>%
+  spread(key = statistic, value = value) %>%
+  select(-p.val, everything()) %>%
+  slice(match(order, variable)) %>%
+  kable(digits=2, caption = '(ref:freqComparison)') %>%
+  kable_styling() %>%
+  kableExtra::group_rows("Heart Rate", 1, 4) %>%
+  kableExtra::group_rows("High Frequency", 5, 10) %>%
+  kableExtra::group_rows("Low Frequency", 11, 16) %>%
+  kableExtra::group_rows("LF-HF Ratio", 17, 22)
+```
+
+
+```{r freqComparisonPlot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlot)', fig.width=9, fig.asp=1}
+
+faceted <- df_freq_summaries %>%
+  filter(str_detect(statistic, "control|episode|p.val")) %>%
+  spread(key = statistic, value = value) %>%
+  select(-p.val, everything()) %>%
+  gather("Group", "Mean", mean.control:mean.episode) %>%
+  mutate(facet = case_when(
+    str_detect(variable, "^HF_.*") ~ "High_Frequency",
+    str_detect(variable, "^LF_.*") ~ "Low_Frequency",
+    str_detect(variable, "^LFHF_.*") ~ "LF-HF Ratio",
+    str_detect(variable, "HR") ~ "Heart Rate"
+    )
+  ) %>%
+  nest(-facet)
+plots <- pmap(list(df = faceted$data, 
+             height = c(1.1, 1.1, 1.1, 1.1),
+             tip = c(0.3, 0.05, 0.1, 0.08)),
+        permutation_plot)
+
+cowplot::plot_grid(plotlist = plots, labels = paste0(letters[1:4], ")"))
+```
+
+## Machine Learning
+
+```{r source-ml, echo=FALSE, message=FALSE, results='hide', cache=TRUE}
+source(here("Scripts", "Final_Emote_prediction_SVM.R"))
+source(here("Scripts", "Final_Emote_prediction_SVM_frequency_domain.R"))
+```
+
+(ref:ml-metrics) Machine Learning Evaluation Metrics
+
+Machine learning models were implemented using time domain and frequency domain features separately. In order to run machine learning prediction of emotional eating episodes, observations with complete data for all features in the time or frequency domain were used, data within each participant were scaled and centered, and observations were randomly upsampled (from episodes) or downsampled (from controls) to balance the number of observations and controls. This resulted in `r results_time %>% filter(type == "z") %>% pull(ntrain) %>% .[1]` training observations, and `r results_time %>% filter(type == "z") %>% pull(ntest) %>% .[1]` test observations in the time domain models, with `r results_freq %>% filter(type == "z") %>% pull(ntrain) %>% .[1]` training observations, and `r results_freq %>% filter(type == "z") %>% pull(ntest) %>% .[1]` test observations in the frequency domain models. SVM models were fit iteratively using 3/4's of the data, and evaluated on the remaining 1/4. Figure \@ref(fig:ml-metrics) show the mean accuracy, sensitivity, and specificity of the SVM across these four folds.
+
+```{r ml-metrics, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:ml-metrics)', fig.width=9, fig.asp=1}
+ml_time <- results_time %>%
+  filter(type == "z") %>%
+  summarise_if(is.numeric, mean) %>%
+  mutate(domain = "Time")
+
+ml_freq <- results_freq %>%
+  filter(type == "z") %>%
+  summarise_if(is.numeric, mean) %>%
+  mutate(domain = "Frequency")
+
+rbind(ml_time, ml_freq) %>%
+  gather("Metric", "Value", 1:3) %>%
+  ggplot(aes(x=Metric, y=Value, fill=domain))+
+  geom_col(position = "dodge") +
+  geom_text(aes(label=formatC(Value, 2), y = Value + 0.025), position = position_dodge(width=0.9), vjust=-0.25) +
+  theme_minimal() +
+  scale_fill_viridis_d()
+```
+
+
+(ref:varImportance-time) Feature Importance of Features in the Time Domain
+
+
+(ref:varImportance-freq) Feature Importance of Features in the Frequency Domain
+
+
+To interpret the feature importance in each of these models, ROC curve analysis was conducted on each feature on the model as recommended by Khun @R-caret. This approach provides a scale-invariant metric that illustrates the impact of a feature on the prediction based on the Area Under the Curve (AUC) of the ROC of a classifier with only the single feature. Figures \@ref(fig:varImportance-time) and \@ref(fig:varImportance-freq) show the results of this analysis.
+
+```{r varImportance-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-time)', fig.width=9, fig.asp=1}
+results_time %>%
+  filter(type == "z") %>%
+  unnest(importance) %>%
+  group_by(rowname) %>%
+  summarise(AUC = mean(Overall)) %>%
+  rename(Variable = rowname) %>% 
+  mutate(Variable = fct_reorder(Variable, AUC, .desc = TRUE)) %>%
+  ggplot(aes(x = Variable, y = AUC))+
+  geom_col() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r varImportance-freq, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-freq)', fig.width=9, fig.asp=1}
+results_freq %>%
+  filter(type == "z") %>%
+  unnest(importance) %>%
+  group_by(rowname) %>%
+  summarise(AUC = mean(Overall)) %>%
+  rename(Variable = rowname) %>% 
+  mutate(Variable = fct_reorder(Variable, AUC, .desc = TRUE)) %>%
+  ggplot(aes(x = Variable, y = AUC))+
+  geom_col() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+# Discussion
+
+A major hurdle to producing interpretable results is the sanity of data obtained from the devices. Despite best efforts, figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate how sparse the data can be and how this affects its overall usefulness in running analyses.The causes for this data sparsity are unclear, and could include reasons such as improper usage or low signal while recording data. The result of this challenge is that derived features are incalculable; for example, time domain feature calculations are strongly dependent on a sliding window that must have within it at least some number of consecutive heart beats, or completeness and consecutiveness of *SDNN*; frequency domain variables are dependent on Fourier transforms which are sensitive to small and variations in wave frequencies. Nevertheless, by following proper data sanity checks and procedures provided in analyses packages and in the literature, it's still possible to extract useful information from these data.
+
+Although no features in the time domain were significantly different between episode and control observations when tested, it's worth mentioning that the machine learning model was still able to achieve decent classification accuracy, sensitivity, and specificity using these features. The most impactful features in this model were *rMSSD* (Root Mean Square of Successive Differences); *SDSD* (Standard Deviation of Successive Differences of inter-beat intervals); and *MADRR* (Median of the Absolute values of the successive Differences between the inter-beat intervals). However, the frequency domain achieved superior classification accuracy in comparison to the time domain, with mean accuracy of 88%, sensitivity of 86%, and specificity of 90%. For this model, the greatest variable importance was for $HF_1$, $LF_5$, $LF_6$, $LF_1$, and $LF_2$. This may reflect a tendency of heart rate to change most noticeably in the low frequency power band, in the moments leading up to an eating episode.
+
+***
+
