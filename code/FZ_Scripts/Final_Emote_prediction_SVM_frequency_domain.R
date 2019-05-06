@@ -2,9 +2,9 @@ library(tidyverse)
 library(caret)
 #install.packages("DAAG")
 library(DAAG)
-library(here)
 
-mydat = read.csv(here("DataOutputs", "data_out_20181113 copy.csv")) %>%
+
+mydat = read.csv("data_out_20181113.csv")%>%
   filter(threshold == 100 & winds == 2)%>%
   select(-winds, - threshold, -index)
  dim(mydat) 
@@ -43,104 +43,65 @@ library(e1071)
 library(ROSE)
 library(caret)
 #mydat2, subdata$Fold1
-modelfit <- function(data, folder){
-  
-  mytrain <- data[-folder, ]
-  mytest <- data[folder, ]
-  ##Generate balanced dataset
-  train.m.bal<-ovun.sample(Y ~ ., data=data, method="both",p=0.6, seed=1342)$data
-  #names(train.m.bal)
-  #table(train.m.bal$Y)
-  # 6:15
-  #[1] "ID"         "Stress"     "Y"          "Avg_niHR"   "Start_niHR"
-  #[6] "End_niHR"   "Avg_HR"     "HF_1"       "HF_2"       "HF_3"      
-  #[11] "HF_4"       "HF_5"       "HF_6"       "LF_1"       "LF_2"      
-  #[16] "LF_3"       "LF_4"       "LF_5"       "LF_6"       "LFHF_1"    
-  #[21] "LFHF_2"     "LFHF_3"     "LFHF_4"     "LFHF_5"     "LFHF_6"    
-  # just take column 4 to column 19 
-  x.train <- train.m.bal[, 4:19]
-  x.train <- as.matrix(x.train)
-  y.train <- train.m.bal$Y
-  #y.train <- as.numeric(train.m.bal$Y)
-  #y.train[which(train.m.bal$Y == "Control")] <- 0
-  #y.train[which(train.m.bal$Y == "Episode")] <- 1
-  print(table(y.train)) # 0 is control, 1 is episode
-  data.train <- cbind(y.train, x.train)
-  fit<- train(as.factor(y.train) ~ ., data= data.train,method="svmPoly")
-  x.test <- mytest[, 4:19]
-  x.test <- as.matrix(x.test)
-  ytest <- as.factor(as.numeric(mytest$Y))
-  print(table(ytest))
-  yhat6 = predict(fit, x.test)
-  #yhat6 <-as.numeric(yhat6)
-  #yhat6 <- as.factor(yhat6)
-  ytest <- as.factor(ytest)
-  temp <- confusionMatrix(yhat6,ytest)
-  
-  result <- c(temp$overall[1], temp$byClass[1:2]) #<-can change threshold if you want
-  
-  var_imp <- filterVarImp(
-    # get variable important; in this case, AUC analysis of a single predictor at a time
-    x=as.data.frame(fit$finalModel@xmatrix), 
-    y=fit$finalModel@ymatrix[fit$finalModel@alphaindex[[1]]]
-  )
-  
-  result["ntrain"] = nrow(data.train)
-  result["ntest"] = nrow(x.test)
-  
-  return(list(result=result, var_imp = var_imp))
+modelfit <- function(dataset, folder){
+mytrain <- dataset[-folder, ]
+mytest <- dataset[folder, ] 
+##Generate balanced dataset
+train.m.bal<-ovun.sample(Y ~ ., data=get("mytrain", sys.frame(1)), method="both",p=0.6, seed=1342)$data
+names(train.m.bal)
+table(train.m.bal$Y)
+x.train <- train.m.bal[, 6:15]
+x.train <- as.matrix(x.train)
+y.train <- train.m.bal$Y
+#y.train <- as.numeric(train.m.bal$Y)
+#y.train[which(train.m.bal$Y == "Control")] <- 0
+#y.train[which(train.m.bal$Y == "Episode")] <- 1
+table(y.train) # 0 is control, 1 is episode
+data.train <- cbind(y.train, x.train)
+fit<- train(as.factor(y.train) ~ ., data= data.train,method="svmPoly")
+x.test <- mytest[, 4:25]
+x.test <- as.matrix(x.test)
+ytest <- as.numeric(mytest$Y)-1
+table(ytest)
+yhat6 = predict(fit, x.test)
+yhat6 <-as.numeric(yhat6)-1
+yhat6 <- as.factor(yhat6)
+ytest <- as.factor(ytest)
+temp <- confusionMatrix(yhat6,ytest)
+
+result <- c(temp$overall[1], temp$byClass[1:2]) #<-can change threshold if you want
+return(result)
 }
+
 #make predictions
 #involve random sampling, need to set the seed
 set.seed(9)
 nfolds=4
 subdata<-createFolds(mydat2$Y, nfolds)
-t1_raw <- modelfit(mydat2, subdata$Fold1)
-t1_raw
-t2_raw <- modelfit(mydat2, subdata$Fold2)
-t2_raw
-t3_raw <- modelfit(mydat2, subdata$Fold3)
-t3_raw
-t4_raw <- modelfit(mydat2, subdata$Fold4)
-t4_raw
-colMeans(rbind(t1_raw$result,t2_raw$result,t3_raw$result,t4_raw$result))
+t1 <- modelfit(mydat2, subdata$Fold1)
+t1
+t2 <- modelfit(mydat2, subdata$Fold2)
+t2
+t3 <- modelfit(mydat2, subdata$Fold3)
+t3
+t4 <- modelfit(mydat2, subdata$Fold4)
+t4
+colMeans(rbind(t1,t2,t3,t4))
 
 set.seed(9)
 nfolds=4
 subdata<-createFolds(mydat3$Y, nfolds)
-t1_z <- modelfit(mydat3, subdata$Fold1)
-t1_z
-t2_z <- modelfit(mydat3, subdata$Fold2)
-t2_z
-t3_z <- modelfit(mydat3, subdata$Fold3)
-t3_z
-t4_z <- modelfit(mydat3, subdata$Fold4)
-t4_z
-colMeans(rbind(t1_z$result,t2_z$result,t3_z$result,t4_z$result))
+t1 <- modelfit(mydat3, subdata$Fold1)
+t1
+t2 <- modelfit(mydat3, subdata$Fold2)
+t2
+t3 <- modelfit(mydat3, subdata$Fold3)
+t3
+t4 <- modelfit(mydat3, subdata$Fold4)
+t4
+colMeans(rbind(t1,t2,t3,t4))
 
-results_freq <- 
-  rbind(
-    t1_raw$result, 
-    t2_raw$result,
-    t3_raw$result,
-    t4_raw$result,
-    t1_z$result, 
-    t2_z$result,
-    t3_z$result,
-    t4_z$result
-  ) %>%
-  data.frame() %>%
-  as_tibble() %>%
-  mutate(type = rep(c("raw", "z"), each=4), importance = list(
-    rownames_to_column(t1_raw$var_imp),
-    rownames_to_column(t2_raw$var_imp),
-    rownames_to_column(t3_raw$var_imp),
-    rownames_to_column(t4_raw$var_imp),
-    rownames_to_column(t1_z$var_imp),
-    rownames_to_column(t2_z$var_imp),
-    rownames_to_column(t3_z$var_imp),
-    rownames_to_column(t4_z$var_imp))
-  )
+
 
 
 

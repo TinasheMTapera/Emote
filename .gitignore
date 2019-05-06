@@ -5,5 +5,6 @@ data/
 misc/
 old_Files/
 .Rproj.user
-**/Icon\r
 *.pyc
+Icon?
+*.tex

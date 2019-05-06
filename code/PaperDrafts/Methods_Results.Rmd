@@ -20,6 +20,10 @@ suppressPackageStartupMessages(
     library(ggsignif, quietly = TRUE)
     library(viridis, quietly = TRUE)
     library(forcats, quietly = TRUE)
+    library(caret, quietly = TRUE)
+    library(ROSE, quietly = TRUE)
+    library(e1071, quietly = TRUE)
+    library(ModelMetrics, quietly = TRUE)
   }
 )
 
@@ -73,15 +77,15 @@ set.seed(1342)
 
 ```{r load data, include=FALSE, warning=FALSE, message=FALSE}
 # all initial surveys
-all_surveys <- read_csv(here('DataOutputs','UpdatedSurveys_180713.csv')) %>%
+all_surveys <- read_csv(here('data','Preprocessing_data_outputs', 'UpdatedSurveys_180713.csv')) %>%
   filter(complete.cases(.)) %>%
   mutate(Y = ifelse(EmotionalEatingEpisodes == 2, 'Control', 'Episode'))
 
 # data used for frequency domain analysis
-df_freq <- read_csv(here('DataOutputs','data_out_20181113 copy.csv'))
+df_freq <- read_csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_out_20181113.csv'))
 
 # data used for time domain analysis
-df_time <- read_csv(here('DataOutputs','data_out copy.csv'))
+df_time <- read_csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_out.csv'))
 ```
 # Methods
 Data analyses were carried out in `r R.version$version.string` and Python 2.7. In accordance with previous studies examining the relation between HRV and discrete eating episodes [@friesen_lin_schurman_andre_callum_2007; @harthoorn_dransfield_2007; @ranzenhofer2016], physiological data collected in the 30-minute period preceding the eating episode were examined. For each participant, the inter-beat interval (IBI) for each self-reported survey was selected, where surveys were either self-reported at the time of an eating episode, or pseudo-randomly triggered in the app. This resulted in an initial total of $n=$ `r all_surveys %>% filter(Y == "Episode") %>% nrow()` emotional eating episodes and $n=$ `r all_surveys %>% filter(Y == "Control") %>% nrow()` control episodes before cleaning the data.
@@ -122,14 +126,12 @@ df_freq_nrow <- df_freq %>%
 
 (ref:missingness-time) Completeness of Features in the Time Domain
 
-(ref:missingness-time-tab) Number of Time Domain Observations
-
 (ref:missingness-freq) Completeness of Features in the Frequency Domain
 
-(ref:missingness-freq-tab) Number of Frequency Domain Observations
+(ref:missingness-tab) Number of Observations Extracted for Each Feature
 
 
-  After cleaning the dataset of erroneous surveys (e.g. no usable IBI data; overlapping survey responses; control observations with high self-reported stress), and filtering IBI streams that did not meet filtering quality criteria for preprocessing, the data consisted of $n=$ `r df_time_nrow %>% filter(Y == "Episode") %>% pull(n)` emotional eating episodes and $n=$ `r df_time_nrow %>% filter(Y == "Control") %>% pull(n)` controls. Of these clean observations, HRV features were extracted from the IBI streams, although even with filtering, many IBI streams were too sparse to compute HRV features. Figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate the completeness of data in the extracted time and frequency domain features, with tables \@ref(tab:missingness-time-tab) and \@ref(tab:missingness-freq-tab) showing the final number of observations used for analysis. Much of the data missing from the time domain is due to the fact that these features derived from SDNN and are dependent on having sufficient data in this feature.
+  After cleaning the dataset of erroneous surveys (e.g. no usable IBI data; overlapping survey responses; control observations with high self-reported stress), and filtering IBI streams that did not meet filtering quality criteria for preprocessing, the data consisted of $n=$ `r df_time_nrow %>% filter(Y == "Episode") %>% pull(n)` emotional eating episodes and $n=$ `r df_time_nrow %>% filter(Y == "Control") %>% pull(n)` controls. Of these clean observations, HRV features were extracted from the IBI streams, although even with filtering, many IBI streams were too sparse to compute HRV features. Figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate the completeness of data in the extracted time and frequency domain features, with table \@ref(tab:missingness-tab) showing the final number of observations used for analysis. Much of the data missing from the time domain is due to the fact that these features derived from SDNN and are dependent on having sufficient data in this feature.
 
 
 ```{r missingness-time, fig.width=9, fig.asp=1, echo = FALSE, fig.cap='(ref:missingness-time)'}
@@ -141,20 +143,6 @@ df_time %>%
   select(-c(winds, threshold, index, when, Event, Stress, ID, Y), SDNN:HRVi) %>%
   vis_miss(.) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
-```
-
-```{r missingness-time-tab, echo = FALSE, warning = FALSE, message = FALSE, results='asis'}
-df_time %>% 
-  # use params threshold = 250, windows = 2
-  filter(threshold == 250 & winds == 2) %>%
-  # remove high stress controls
-  filter(!(Stress >= 5 & Y == "Control")) %>%
-  select(-c(winds, threshold, index, when, Event, Stress, ID), Y, SDNN:HRVi) %>%
-  group_by(Y) %>%
-  summarise_all(funs(sum(!is.na(.)))) %>%
-  t() %>%
-  kable(caption = '(ref:missingness-time-tab)') %>%
-  kable_styling()
 ```
 
 
@@ -170,8 +158,23 @@ df_freq %>%
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
 
-```{r missingness-freq-tab, echo = FALSE, warning = FALSE, message = FALSE, results='asis'}
-df_freq %>% 
+```{r missingness-tab, echo = FALSE, warning = FALSE, message = FALSE, results='asis'}
+missingnesstable_time <- df_time %>% 
+  # use params threshold = 250, windows = 2
+  filter(threshold == 250 & winds == 2) %>%
+  # remove high stress controls
+  filter(!(Stress >= 5 & Y == "Control")) %>%
+  select(-c(winds, threshold, index, when, Event, Stress, ID), Y, SDNN:HRVi) %>%
+  group_by(Y) %>%
+  summarise_all(funs(sum(!is.na(.)))) %>%
+  t()
+
+colnames(missingnesstable_time) <- missingnesstable_time[1,]
+missingnesstable_time <- missingnesstable_time[-1,] %>%
+  data.frame() %>%
+  rownames_to_column(var = "Variable")
+
+missingnesstable_freq <- df_freq %>% 
   # use params threshold = 250, windows = 2
   filter(threshold == 100 & winds == 2) %>%
   # remove high stress controls
@@ -181,13 +184,21 @@ df_freq %>%
   select(Y, Avg_niHR:LFHF_6) %>%
   group_by(Y) %>%
   summarise_all(funs(sum(!is.na(.)))) %>%
-  t() %>%
-  kable(caption = '(ref:missingness-freq-tab)') %>%
+  t()
+
+colnames(missingnesstable_freq) <- missingnesstable_freq[1,]
+missingnesstable_freq <- missingnesstable_freq[-1,] %>%
+  data.frame() %>%
+  rownames_to_column(var = "Variable")
+
+bind_rows(missingnesstable_time, missingnesstable_freq)%>%
+  kable(caption = '(ref:missingness-tab)') %>%
   kable_styling() %>%
-  kableExtra::group_rows("Heart Rate", 2, 5) %>%
-  kableExtra::group_rows("High Frequency", 6, 11) %>%
-  kableExtra::group_rows("Low Frequency", 12, 17) %>%
-  kableExtra::group_rows("LF-HF Ratio", 18, 23)
+  kableExtra::group_rows("Heart Rate Variability", 1, 10) %>%
+  kableExtra::group_rows("Heart Rate", 11, 14) %>%
+  kableExtra::group_rows("High Frequency", 15, 20) %>%
+  kableExtra::group_rows("Low Frequency", 21, 26) %>%
+  kableExtra::group_rows("LF-HF Ratio", 27, 32)
 ```
 
 ## Comparison of Means
@@ -390,9 +401,277 @@ cowplot::plot_grid(plotlist = plots, labels = paste0(letters[1:4], ")"))
 
 ## Machine Learning
 
-```{r source-ml, echo=FALSE, message=FALSE, results='hide', cache=TRUE}
-source(here("Scripts", "Final_Emote_prediction_SVM.R"))
-source(here("Scripts", "Final_Emote_prediction_SVM_frequency_domain.R"))
+```{r ml-functions, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+modelfit <- function(data){
+  
+  train <- data$train
+  test <- data$test
+  # fit the model on the training set
+  fit <- train(Y ~ ., data = train, method="svmPoly")
+  
+  # predict on the test set
+  yhat = predict(fit, newdata = select(test, -Y))
+  
+  # evaluate test accuracy
+  conf <- caret::confusionMatrix(yhat, test$Y)
+  result <- c(conf$overall[1], conf$byClass[1:2]) #<-can change threshold if you want
+  result["auc"] <- auc(test$Y, yhat)
+  
+  return(result)
+  
+}
+
+perturb_model_fit <- function(data){
+  
+  train <- data$train
+  test <- data$test
+  
+  # fit the model on the training set
+  fit <- train(Y ~ ., data = train, method="svmPoly", trControl = trainControl(classProbs = TRUE))
+  # get these fitted probabilities
+  y = predict(fit, newdata = select(train, -Y), type = "prob") %>%
+    rownames_to_column()
+  
+  # perturb a column from the training set and get the new probabilities
+  result <- list(Control = y)
+  
+  for(c in 2:ncol(train)){
+    
+    col <- names(train)[c]
+    temp <- train
+    temp[, col] <- temp[, col] + 1
+    result[[col]] <- predict(fit, newdata = select(temp, -Y), type = "prob") %>%
+      rownames_to_column()
+    
+  }
+  
+  # tidy
+  bound <- bind_rows(result, .id='Perturbed_Feature') %>%
+    mutate(rowname = as.numeric(rowname)) %>%
+    select(-Control) %>% 
+    spread(key = "Perturbed_Feature", value = Episode) %>%
+    as_tibble() %>%
+    bind_cols(Y = train$Y)
+  
+  return(bound)
+  
+}
+
+train_test <- function(dataset, folder, print = FALSE){
+  
+  # issue here with namespace and "data" variable reference
+  data <- dataset[-folder, ]
+  mytest <- dataset[folder, ]
+  
+  # generate a balanced training set
+  train <- ovun.sample(
+    Y ~ .,
+    data=data,
+    method = "both",
+    p = 0.6,
+    seed = 1342
+  )$data
+  
+  train <- as_tibble(train) %>%
+    droplevels()
+  test <- as_tibble(mytest) %>%
+    droplevels()
+  
+  if(print){
+    print("Training set:")
+    print(train)
+    print(table(train$Y))
+    print("Testing set:")
+    print(test)
+    print(table(test$Y))
+  }
+  
+  return(list(train = train, test = test))
+  
+}
+
+# get variable importance by looping over the columns, leave-one-out for each model
+leave_one_out_auc <- function(df, col){
+  
+  df_reduced <- df %>%
+    select(-!!col)
+  nfolds <- 4
+  subdata <- createFolds(df_reduced$Y, nfolds)
+  
+  temp1 <- train_test(df_time_ml, subdata$Fold1) %>%
+    modelfit()
+  temp2 <- train_test(df_time_ml, subdata$Fold2) %>%
+    modelfit()
+  temp3 <- train_test(df_time_ml, subdata$Fold3) %>%
+    modelfit()
+  temp4 <- train_test(df_time_ml, subdata$Fold4)%>%
+    modelfit()
+
+    
+  auc <- colMeans(rbind(temp1['auc'],temp2['auc'], temp3['auc'], temp4['auc'])) %>%
+    t() %>%
+    data.frame(auc = ., variable = names(df)[c])
+  return(auc)
+}
+```
+
+```{r ml-datasets, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+df_time_ml <- read.csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_out.csv'))%>%
+  # use params threshold = 250, windows = 2
+  filter(threshold == 250 & winds == 2)%>%
+  select(-winds, - threshold, -index) %>%
+  filter(complete.cases(.)) %>%
+  filter(!((Stress>=5) & (Y == "Control")))
+
+df_time_ml <- df_time_ml %>%
+  mutate(ID = as.factor(ID)) %>%
+  group_by(ID) %>%
+  mutate_at(vars(SDNN:HRVi), scale) %>%
+  ungroup() %>%
+  select(Y:HRVi) %>%
+  filter(complete.cases(.))
+
+df_freq_ml <- read.csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_out_20181113.csv'))%>%
+  # use params threshold = 250, windows = 2
+  select(-c(winds, threshold, index, when, Event)) %>%
+  select(Y, ID, Stress, Avg_niHR:LF_6) %>%
+  filter(complete.cases(.)) %>%
+  filter(!(Stress >= 5 & Y == "Control"))
+  
+
+df_freq_ml <- df_freq_ml %>%
+  mutate(ID = as.factor(ID)) %>%
+  group_by(ID) %>%
+  mutate_at(vars(Avg_niHR:LF_6), scale) %>%
+  ungroup() %>%
+  select(Y, Avg_niHR:LF_6) %>%
+  filter(complete.cases(.))
+```
+
+```{r ml-time, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+set.seed(9)
+nfolds <- 4
+subdata<-createFolds(df_time_ml$Y, nfolds)
+t1_z <- train_test(df_time_ml, subdata$Fold1) %>%
+  modelfit()
+t2_z <- train_test(df_time_ml, subdata$Fold2) %>%
+  modelfit()
+t3_z <- train_test(df_time_ml, subdata$Fold3) %>%
+  modelfit()
+t4_z <- train_test(df_time_ml, subdata$Fold4) %>%
+  modelfit()
+results_time <- colMeans(rbind(t1_z, t2_z, t3_z, t4_z))
+```
+
+```{r auc-importance-time, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+auc_comparison_time <- list()
+
+for(c in 2:ncol(df_time_ml)){
+  print(names(df_time_ml)[c])
+  auc_comparison_time <- leave_one_out_auc(df_time_ml, c) %>%
+    rbind(auc_comparison_time)
+}
+
+auc_time <- auc_comparison_time %>%
+  mutate(Change_AUC = results_time['auc'] - auc) %>%
+  arrange(-Change_AUC)
+```
+
+```{r perturbations-time, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+set.seed(9)
+nfolds <- 4
+subdata<-createFolds(df_time_ml$Y, nfolds)
+
+perturbed_time_1 <- train_test(df_time_ml, subdata$Fold1) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control))# %>%
+  #select(Y, contains("Delta"))
+
+perturbed_time_2 <- train_test(df_time_ml, subdata$Fold2) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+
+perturbed_time_3 <- train_test(df_time_ml, subdata$Fold3) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+
+perturbed_time_4 <- train_test(df_time_ml, subdata$Fold4) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+```
+
+```{r ml-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+set.seed(9)
+nfolds <- 4
+subdata<-createFolds(df_freq_ml$Y, nfolds)
+f1_z <- train_test(df_freq_ml, subdata$Fold1) %>%
+  modelfit()
+f2_z <- train_test(df_freq_ml, subdata$Fold2) %>%
+  modelfit()
+f3_z <- train_test(df_freq_ml, subdata$Fold3) %>%
+  modelfit()
+f4_z <- train_test(df_freq_ml, subdata$Fold4) %>%
+  modelfit()
+results_freq <- colMeans(rbind(f1_z, f2_z, f3_z, f4_z))
+```
+
+```{r auc-importance-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+auc_comparison_freq <- list()
+
+for(c in 2:ncol(df_freq_ml)){
+  print(names(df_freq_ml)[c])
+  auc_comparison_freq <- leave_one_out_auc(df_freq_ml, c) %>%
+    rbind(auc_comparison_freq)
+}
+
+auc_freq <- auc_comparison_freq %>%
+  mutate(Change_AUC = results_freq['auc'] - auc) %>%
+  arrange(-Change_AUC)
+```
+
+```{r perturbations-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
+set.seed(9)
+nfolds <- 4
+subdata<-createFolds(df_freq_ml$Y, nfolds)
+
+perturbed_freq_1 <- train_test(df_freq_ml, subdata$Fold1) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+
+perturbed_freq_2 <- train_test(df_time_ml, subdata$Fold2) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+
+perturbed_freq_3 <- train_test(df_time_ml, subdata$Fold3) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+
+perturbed_freq_4 <- train_test(df_time_ml, subdata$Fold4) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
 ```
 
 (ref:ml-metrics) Machine Learning Evaluation Metrics
@@ -401,18 +680,17 @@ Machine learning models were implemented using time domain and frequency domain 
 
 ```{r ml-metrics, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:ml-metrics)', fig.width=9, fig.asp=1}
 ml_time <- results_time %>%
-  filter(type == "z") %>%
-  summarise_if(is.numeric, mean) %>%
-  mutate(domain = "Time")
+  enframe(name = "Metric", value = "Value") %>%
+  mutate(Metric = ifelse(Metric == "auc", "AUC", Metric),
+         Domain = "Time")
 
 ml_freq <- results_freq %>%
-  filter(type == "z") %>%
-  summarise_if(is.numeric, mean) %>%
-  mutate(domain = "Frequency")
+  enframe(name = "Metric", value = "Value") %>%
+  mutate(Metric = ifelse(Metric == "auc", "AUC", Metric),
+         Domain = "Frequency")
 
-rbind(ml_time, ml_freq) %>%
-  gather("Metric", "Value", 1:3) %>%
-  ggplot(aes(x=Metric, y=Value, fill=domain))+
+bind_rows(ml_time, ml_freq) %>%
+  ggplot(aes(x=Metric, y=Value, fill=Domain))+
   geom_col(position = "dodge") +
   geom_text(aes(label=formatC(Value, 2), y = Value + 0.025), position = position_dodge(width=0.9), vjust=-0.25) +
   theme_minimal() +
@@ -425,18 +703,12 @@ rbind(ml_time, ml_freq) %>%
 
 (ref:varImportance-freq) Feature Importance of Features in the Frequency Domain
 
-
-To interpret the feature importance in each of these models, ROC curve analysis was conducted on each feature on the model as recommended by Khun @R-caret. This approach provides a scale-invariant metric that illustrates the impact of a feature on the prediction based on the Area Under the Curve (AUC) of the ROC of a classifier with only the single feature. Figures \@ref(fig:varImportance-time) and \@ref(fig:varImportance-freq) show the results of this analysis.
+To interpret the feature importance in each of these models, ROC curve analysis was conducted on each feature on the model as recommended by Khun @R-caret. This approach provides a scale-invariant metric that illustrates the impact of a feature on the prediction based on the Area Under the Curve (AUC) of the ROC of a classifier with the feature removed. Figures \@ref(fig:varImportance-time) and \@ref(fig:varImportance-freq) show the results of this analysis.
 
 ```{r varImportance-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-time)', fig.width=9, fig.asp=1}
-results_time %>%
-  filter(type == "z") %>%
-  unnest(importance) %>%
-  group_by(rowname) %>%
-  summarise(AUC = mean(Overall)) %>%
-  rename(Variable = rowname) %>% 
-  mutate(Variable = fct_reorder(Variable, AUC, .desc = TRUE)) %>%
-  ggplot(aes(x = Variable, y = AUC))+
+auc_time %>%
+  mutate(Variable = fct_reorder(variable, Change_AUC, .desc = TRUE)) %>%
+  ggplot(aes(x = Variable, y = Change_AUC))+
   geom_col() +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
