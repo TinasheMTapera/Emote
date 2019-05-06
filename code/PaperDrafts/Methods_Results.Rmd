@@ -495,22 +495,23 @@ leave_one_out_auc <- function(df, col){
   
   df_reduced <- df %>%
     select(-!!col)
+  set.seed(9)
   nfolds <- 4
   subdata <- createFolds(df_reduced$Y, nfolds)
   
-  temp1 <- train_test(df_time_ml, subdata$Fold1) %>%
+  temp1 <- train_test(df_reduced, subdata$Fold1) %>%
     modelfit()
-  temp2 <- train_test(df_time_ml, subdata$Fold2) %>%
+  temp2 <- train_test(df_reduced, subdata$Fold2) %>%
     modelfit()
-  temp3 <- train_test(df_time_ml, subdata$Fold3) %>%
+  temp3 <- train_test(df_reduced, subdata$Fold3) %>%
     modelfit()
-  temp4 <- train_test(df_time_ml, subdata$Fold4)%>%
+  temp4 <- train_test(df_reduced, subdata$Fold4)%>%
     modelfit()
 
     
   auc <- colMeans(rbind(temp1['auc'],temp2['auc'], temp3['auc'], temp4['auc'])) %>%
     t() %>%
-    data.frame(auc = ., variable = names(df)[c])
+    data.frame(auc = ., variable = names(df)[col])
   return(auc)
 }
 ```
@@ -573,8 +574,8 @@ for(c in 2:ncol(df_time_ml)){
 }
 
 auc_time <- auc_comparison_time %>%
-  mutate(Change_AUC = results_time['auc'] - auc) %>%
-  arrange(-Change_AUC)
+  mutate(Reduction_AUC = results_time['auc'] - auc) %>%
+  arrange(-Reduction_AUC)
 ```
 
 ```{r perturbations-time, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
@@ -636,8 +637,8 @@ for(c in 2:ncol(df_freq_ml)){
 }
 
 auc_freq <- auc_comparison_freq %>%
-  mutate(Change_AUC = results_freq['auc'] - auc) %>%
-  arrange(-Change_AUC)
+  mutate(Reduction_AUC = results_time['auc'] - auc) %>%
+  arrange(-Reduction_AUC)
 ```
 
 ```{r perturbations-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
