@@ -1,9 +1,9 @@
 ---
 title: "Methods & Results Section"
 output:
+  bookdown::html_document2: null
   bookdown::word_document2:
     toc: false
-  bookdown::html_document2: null
 bibliography: citations.bib
 always_allow_html: yes
 ---
@@ -24,6 +24,7 @@ suppressPackageStartupMessages(
     library(ROSE, quietly = TRUE)
     library(e1071, quietly = TRUE)
     library(ModelMetrics, quietly = TRUE)
+    library(scales, quietly = TRUE)
   }
 )
 
@@ -56,12 +57,14 @@ permutation_plot <- function(df, height = 1.2, tip = 0.1){
     pull(rowid)
   y_position <- df$Mean[n] * height
   
-  plt  <- df %>% {
-    ggplot(., aes(x=variable, y=Mean, fill  = Group)) +
+  plt  <- df %>% 
+    mutate(Feature = variable) %>%
+    {
+      ggplot(., aes(x = Feature, y = Mean, fill = Group)) +
         geom_col(position = "dodge") +
         theme_minimal() +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-        geom_signif(annotations = sapply(.$p.val[n], p_format),
+        theme(axis.text.x = element_text(angle = 90, hjust = 1), text = element_text(size=15, family = "Times")) + 
+        geom_signif(family = "Times", annotations = sapply(.$p.val[n], p_format),
                     xmin = seq(0.8, length.out = length(n)),
                     xmax = seq(1.2, length.out = length(n)),
                     y_position = y_position,
@@ -142,7 +145,10 @@ df_time %>%
   filter(!(Stress >= 5 & Y == "Control")) %>%
   select(-c(winds, threshold, index, when, Event, Stress, ID, Y), SDNN:HRVi) %>%
   vis_miss(.) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    text = element_text(size=15, family = "Times")
+    )
 ```
 
 
@@ -155,7 +161,10 @@ df_freq %>%
   select(-c(winds, threshold, index, when, Event, Stress, ID, Y)) %>%
   select(Avg_niHR:LFHF_6) %>%
   vis_miss(.) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    text = element_text(size=15, family = "Times")
+    )
 ```
 
 ```{r missingness-tab, echo = FALSE, warning = FALSE, message = FALSE, results='asis'}
@@ -427,7 +436,7 @@ perturb_model_fit <- function(data){
   test <- data$test
   
   # fit the model on the training set
-  fit <- train(Y ~ ., data = train, method="svmPoly", trControl = trainControl(classProbs = TRUE))
+  invisible(capture.output(fit <- train(Y ~ ., data = train, method="svmPoly", trControl = trainControl(classProbs = TRUE))))
   # get these fitted probabilities
   y = predict(fit, newdata = select(train, -Y), type = "prob") %>%
     rownames_to_column()
@@ -568,13 +577,13 @@ results_time <- colMeans(rbind(t1_z, t2_z, t3_z, t4_z))
 auc_comparison_time <- list()
 
 for(c in 2:ncol(df_time_ml)){
-  print(names(df_time_ml)[c])
   auc_comparison_time <- leave_one_out_auc(df_time_ml, c) %>%
     rbind(auc_comparison_time)
 }
 
 auc_time <- auc_comparison_time %>%
   mutate(Reduction_AUC = results_time['auc'] - auc) %>%
+  mutate(Reduction_AUC = rescale(Reduction_AUC, c(0,1))) %>%
   arrange(-Reduction_AUC)
 ```
 
@@ -610,6 +619,7 @@ perturbed_time_4 <- train_test(df_time_ml, subdata$Fold4) %>%     # split train 
     .vars = vars(-rowname, -Y, -Control),
     .funs = list(Delta = ~. - Control)) #%>%
   #select(Y, contains("Delta"))
+
 ```
 
 ```{r ml-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
@@ -631,13 +641,13 @@ results_freq <- colMeans(rbind(f1_z, f2_z, f3_z, f4_z))
 auc_comparison_freq <- list()
 
 for(c in 2:ncol(df_freq_ml)){
-  print(names(df_freq_ml)[c])
   auc_comparison_freq <- leave_one_out_auc(df_freq_ml, c) %>%
     rbind(auc_comparison_freq)
 }
 
 auc_freq <- auc_comparison_freq %>%
-  mutate(Reduction_AUC = results_time['auc'] - auc) %>%
+  mutate(Reduction_AUC = results_freq['auc'] - auc) %>%
+  mutate(Reduction_AUC = rescale(Reduction_AUC, c(0,1))) %>%
   arrange(-Reduction_AUC)
 ```
 
@@ -653,31 +663,50 @@ perturbed_freq_1 <- train_test(df_freq_ml, subdata$Fold1) %>%     # split train 
     .funs = list(Delta = ~. - Control)) #%>%
   #select(Y, contains("Delta"))
 
-perturbed_freq_2 <- train_test(df_time_ml, subdata$Fold2) %>%     # split train and test
+perturbed_freq_2 <- train_test(df_freq_ml, subdata$Fold2) %>%     # split train and test
   perturb_model_fit() %>%                                   # fit model and perturb each column
   mutate_at(                                                # tidy to get differences
     .vars = vars(-rowname, -Y, -Control),
     .funs = list(Delta = ~. - Control)) #%>%
   #select(Y, contains("Delta"))
 
-perturbed_freq_3 <- train_test(df_time_ml, subdata$Fold3) %>%     # split train and test
+perturbed_freq_3 <- train_test(df_freq_ml, subdata$Fold3) %>%     # split train and test
   perturb_model_fit() %>%                                   # fit model and perturb each column
   mutate_at(                                                # tidy to get differences
     .vars = vars(-rowname, -Y, -Control),
     .funs = list(Delta = ~. - Control)) #%>%
   #select(Y, contains("Delta"))
 
-perturbed_freq_4 <- train_test(df_time_ml, subdata$Fold4) %>%     # split train and test
+perturbed_freq_4 <- train_test(df_freq_ml, subdata$Fold4) %>%     # split train and test
   perturb_model_fit() %>%                                   # fit model and perturb each column
   mutate_at(                                                # tidy to get differences
     .vars = vars(-rowname, -Y, -Control),
     .funs = list(Delta = ~. - Control)) #%>%
   #select(Y, contains("Delta"))
+
+```
+
+```{r gather-importance, echo = FALSE, warning = FALSE, message = FALSE}
+time_domain_deltas <- bind_rows(perturbed_time_1, perturbed_time_2, perturbed_time_3, perturbed_time_4) %>%
+  group_by(Y) %>%
+  summarise_if(is.numeric, mean) %>%
+  select(-rowname) %>%
+  select(Y, contains("_Delta")) %>%
+  gather("variable", "Delta_Probability", -Y) %>%
+  mutate(variable = str_replace(variable, pattern = "_Delta", replacement = ""))
+
+freq_domain_deltas <- bind_rows(perturbed_freq_1, perturbed_freq_2, perturbed_freq_3, perturbed_freq_4) %>%
+  group_by(Y) %>%
+  summarise_if(is.numeric, mean) %>%
+  select(-rowname) %>%
+  select(Y, contains("_Delta")) %>%
+  gather("variable", "Delta_Probability", -Y) %>%
+  mutate(variable = str_replace(variable, pattern = "_Delta", replacement = ""))
 ```
 
 (ref:ml-metrics) Machine Learning Evaluation Metrics
 
-Machine learning models were implemented using time domain and frequency domain features separately. In order to run machine learning prediction of emotional eating episodes, observations with complete data for all features in the time or frequency domain were used, data within each participant were scaled and centered, and observations were randomly upsampled (from episodes) or downsampled (from controls) to balance the number of observations and controls. This resulted in `r results_time %>% filter(type == "z") %>% pull(ntrain) %>% .[1]` training observations, and `r results_time %>% filter(type == "z") %>% pull(ntest) %>% .[1]` test observations in the time domain models, with `r results_freq %>% filter(type == "z") %>% pull(ntrain) %>% .[1]` training observations, and `r results_freq %>% filter(type == "z") %>% pull(ntest) %>% .[1]` test observations in the frequency domain models. SVM models were fit iteratively using 3/4's of the data, and evaluated on the remaining 1/4. Figure \@ref(fig:ml-metrics) show the mean accuracy, sensitivity, and specificity of the SVM across these four folds.
+Machine learning models were implemented using time domain and frequency domain features separately. In order to run machine learning prediction of emotional eating episodes, observations with complete data for all features in the time or frequency domain were used, data within each participant were scaled and centered, and observations were randomly upsampled (from episodes) or downsampled (from controls) to balance the number of observations and controls. SVM models were fit iteratively using 3/4's of the data, and evaluated on the remaining 1/4. Figure \@ref(fig:ml-metrics) show the mean accuracy, sensitivity, and specificity of the SVM across these four folds.
 
 ```{r ml-metrics, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:ml-metrics)', fig.width=9, fig.asp=1}
 ml_time <- results_time %>%
@@ -695,45 +724,114 @@ bind_rows(ml_time, ml_freq) %>%
   geom_col(position = "dodge") +
   geom_text(aes(label=formatC(Value, 2), y = Value + 0.025), position = position_dodge(width=0.9), vjust=-0.25) +
   theme_minimal() +
-  scale_fill_viridis_d()
+  scale_fill_viridis_d() +
+  theme(text = element_text(size=15, family = "Times"))
 ```
 
 
-(ref:varImportance-time) Feature Importance of Features in the Time Domain
+(ref:varImportance-time) Pseudo-Feature Importance by Removing & Perturbing Each Feature: Time Domain
 
+(ref:varImportance-freq) Pseudo-Feature Importance by Removing & Perturbing Each Feature: Frequency Domain
 
-(ref:varImportance-freq) Feature Importance of Features in the Frequency Domain
-
-To interpret the feature importance in each of these models, ROC curve analysis was conducted on each feature on the model as recommended by Khun @R-caret. This approach provides a scale-invariant metric that illustrates the impact of a feature on the prediction based on the Area Under the Curve (AUC) of the ROC of a classifier with the feature removed. Figures \@ref(fig:varImportance-time) and \@ref(fig:varImportance-freq) show the results of this analysis.
+To interpret the feature importance in each of these models, ROC curve analysis was conducted on each feature on the model as recommended by Khun @R-caret, by systemmatically removing each variable from the model and comparing the achieved Area Under the Curve (AUC) against that of the full model. In order to assess whether or not these features discriminate well between episodes and controls, models were fitted on the original data and the fitted values were perturbed for each variable. The probabilities of predictions were extracted from each perturbed model and compared to the probabilities of the original model, to understand how increasing values of the features increased or decreased the likelihood of an eating episode. Figures \@ref(fig:varImportance-time) and \@ref(fig:varImportance-freq) show the results of this analysis.
 
 ```{r varImportance-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-time)', fig.width=9, fig.asp=1}
-auc_time %>%
-  mutate(Variable = fct_reorder(variable, Change_AUC, .desc = TRUE)) %>%
-  ggplot(aes(x = Variable, y = Change_AUC))+
-  geom_col() +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+time_domain_deltas %>% 
+  group_by(variable) %>%
+  summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_time, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  select(-variable) %>%
+  ggplot(aes(x = Feature, y = Reduction_AUC))+
+    geom_segment(
+      aes(
+        y = 0,
+        x = Feature, 
+        yend = Reduction_AUC, 
+        xend = Feature
+      ), 
+      color = "black"
+    ) +
+    geom_point(aes(colour = Delta_Probability), size = 8) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      text = element_text(size=15, family = "Times"),
+      legend.position = "bottom"
+    ) +
+    labs(
+      x = "Feature",
+      y = "Decrease in Model AUC When Feature Removed"
+    ) +
+  scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Feature Perturbed")
 ```
 
+In the time domain, the most important feature by measure of decrease in model AUC was *SDANN*, followed by *SDNN* and *MADRR*. Increasing values in *SDANN* by 1 unit tended to decrease the probability of observations being predicted as episode, suggesting that higher levels of *SDANN* decrease the likelihood of an eating episode. This same inference can be made of *MADRR*. In the case of *SDNN*, a 1 unit increase in values of this feature increased the probability of observations being predicted as episodes.
+
 ```{r varImportance-freq, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-freq)', fig.width=9, fig.asp=1}
-results_freq %>%
-  filter(type == "z") %>%
-  unnest(importance) %>%
-  group_by(rowname) %>%
-  summarise(AUC = mean(Overall)) %>%
-  rename(Variable = rowname) %>% 
-  mutate(Variable = fct_reorder(Variable, AUC, .desc = TRUE)) %>%
-  ggplot(aes(x = Variable, y = AUC))+
-  geom_col() +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+freq_domain_deltas %>% 
+  group_by(variable) %>%
+  summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_freq, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  select(-variable) %>%
+  ggplot(aes(x = Feature, y = Reduction_AUC))+
+    geom_segment(
+      aes(
+        y = 0,
+        x = Feature, 
+        yend = Reduction_AUC, 
+        xend = Feature
+      ), 
+      color = "black"
+    ) +
+    geom_point(aes(colour = Delta_Probability), size = 8) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      text = element_text(size=15, family = "Times"),
+      legend.position = "bottom"
+    ) +
+    #facet_grid(Y~.) +
+    labs(
+      x = "Feature",
+      y = "Decrease in Model AUC When Feature Removed"
+    ) +
+  scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Feature Perturbed")
 ```
+
+In the frequency domain, the most important features by measure of decrease in model AUC were the High Frequency windows $HF_2$, $HF_6$, and $HF_3$. Increasing values in $HF_2$ by 1 unit tended to decrease the probability of observations being predicted as episode, suggesting that stronger signals in the high frequency band at this time in the window decrease the likelihood of an eating episode. This inference is the opposite, however, for $HF_6$ and $HF_3$, which show that increasing these variables' values by one unit tends to increase the likelihood of an eating episode. Interestingly, while the heart rate variables *Avg_HR*, *Avg_niHR*, and *End_niHR* had significantly different means, their affect on the achieved AUC was relatively minimal, indicating they had very small feature importance for this model.
+
+(ref:highfreq-timeseries) Time Series of High Frequency Band
+
+To better interpret how the signal in the high frequency band of heart rate varies through the 30-minute window, we plot these values in Figure \@ref(fig:highfreq-timeseries) below:
+
+```{r highfreq-timeseries, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:highfreq-timeseries)', fig.width=9, fig.asp=1}
+df_freq_ml %>%
+  gather('variable', 'value', HF_1:HF_6) %>%
+  ggplot(aes(x=variable, y=value, colour=Y)) +
+  geom_jitter(alpha = 0.6, width = 0.15) +
+  stat_smooth(aes(group = Y), method = "loess") +
+  labs(x = "Frequency Band Window", y = "Z-Score") +
+  theme_minimal() +
+  scale_color_viridis_d()
+```
+
+The visualisation shows that at the second window, $HF_2$, there is an inverse relationship between the trajectories of episodes and controls, which may represent the high variable importance of $HF_2$. $HF_6$ shows a similar inverse trend, as increasing values of this variable are associated with episodes while decreasing values are associated with controls.
 
 # Discussion
 
 A major hurdle to producing interpretable results is the sanity of data obtained from the devices. Despite best efforts, figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate how sparse the data can be and how this affects its overall usefulness in running analyses.The causes for this data sparsity are unclear, and could include reasons such as improper usage or low signal while recording data. The result of this challenge is that derived features are incalculable; for example, time domain feature calculations are strongly dependent on a sliding window that must have within it at least some number of consecutive heart beats, or completeness and consecutiveness of *SDNN*; frequency domain variables are dependent on Fourier transforms which are sensitive to small and variations in wave frequencies. Nevertheless, by following proper data sanity checks and procedures provided in analyses packages and in the literature, it's still possible to extract useful information from these data.
 
-Although no features in the time domain were significantly different between episode and control observations when tested, it's worth mentioning that the machine learning model was still able to achieve decent classification accuracy, sensitivity, and specificity using these features. The most impactful features in this model were *rMSSD* (Root Mean Square of Successive Differences); *SDSD* (Standard Deviation of Successive Differences of inter-beat intervals); and *MADRR* (Median of the Absolute values of the successive Differences between the inter-beat intervals). However, the frequency domain achieved superior classification accuracy in comparison to the time domain, with mean accuracy of 88%, sensitivity of 86%, and specificity of 90%. For this model, the greatest variable importance was for $HF_1$, $LF_5$, $LF_6$, $LF_1$, and $LF_2$. This may reflect a tendency of heart rate to change most noticeably in the low frequency power band, in the moments leading up to an eating episode.
+Although no features in the time domain were significantly different between episode and control observations when tested, it's worth mentioning that the machine learning model was still able to achieve decent classification accuracy, sensitivity, and specificity using these features. The most impactful features in this model were *rMSSD* (Root Mean Square of Successive Differences); *SDSD* (Standard Deviation of Successive Differences of inter-beat intervals); and *MADRR* (Median of the Absolute values of the successive Differences between the inter-beat intervals). However, the frequency domain achieved superior classification accuracy in comparison to the time domain, with mean accuracy of `r 100*round(results_freq['Accuracy'], 3)`%, sensitivity of `r 100*round(results_freq['Sensitivity'], 3)`%, and specificity of `r 100*round(results_freq['Specificity'], 3)`%. For this model, the greatest variable importance was for $HF_1$, $LF_5$, $LF_6$, $LF_1$, and $LF_2$. This may reflect a tendency of heart rate to change most noticeably in the low frequency power band, in the moments leading up to an eating episode.
 
 ***
 
