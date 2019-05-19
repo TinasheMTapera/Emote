@@ -1,0 +1,288 @@
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[t]
+
+\caption{\label{tab:missingness-tab}Number of Observations Extracted for Each Feature}
+\centering
+\begin{tabular}{l|l|l}
+\hline
+Variable & Control & Episode\\
+\hline
+\multicolumn{3}{l}{\textbf{Heart Rate Variability}}\\
+\hline
+\hspace{1em}SDNN & 1318 & 219\\
+\hline
+\hspace{1em}SDANN & 110 & 19\\
+\hline
+\hspace{1em}SDNNIDX & 110 & 19\\
+\hline
+\hspace{1em}pNN50 & 110 & 19\\
+\hline
+\hspace{1em}SDSD & 110 & 19\\
+\hline
+\hspace{1em}rMSSD & 110 & 19\\
+\hline
+\hspace{1em}IRRR & 110 & 19\\
+\hline
+\hspace{1em}MADRR & 110 & 19\\
+\hline
+\hspace{1em}TINN & 110 & 19\\
+\hline
+\hspace{1em}HRVi & 110 & 19\\
+\hline
+\multicolumn{3}{l}{\textbf{Heart Rate}}\\
+\hline
+\hspace{1em}Avg\_niHR & 1282 & 215\\
+\hline
+\hspace{1em}Start\_niHR & 1282 & 215\\
+\hline
+\hspace{1em}End\_niHR & 1282 & 215\\
+\hline
+\hspace{1em}Avg\_HR & 1282 & 215\\
+\hline
+\multicolumn{3}{l}{\textbf{High Frequency}}\\
+\hline
+\hspace{1em}HF\_1 & 433 & 82\\
+\hline
+\hspace{1em}HF\_2 & 451 & 77\\
+\hline
+\hspace{1em}HF\_3 & 456 & 79\\
+\hline
+\hspace{1em}HF\_4 & 440 & 82\\
+\hline
+\hspace{1em}HF\_5 & 445 & 66\\
+\hline
+\hspace{1em}HF\_6 & 444 & 71\\
+\hline
+\multicolumn{3}{l}{\textbf{Low Frequency}}\\
+\hline
+\hspace{1em}LF\_1 & 433 & 82\\
+\hline
+\hspace{1em}LF\_2 & 451 & 77\\
+\hline
+\hspace{1em}LF\_3 & 456 & 79\\
+\hline
+\hspace{1em}LF\_4 & 440 & 82\\
+\hline
+\hspace{1em}LF\_5 & 445 & 66\\
+\hline
+\hspace{1em}LF\_6 & 444 & 71\\
+\hline
+\multicolumn{3}{l}{\textbf{LF-HF Ratio}}\\
+\hline
+\hspace{1em}LFHF\_1 & 433 & 82\\
+\hline
+\hspace{1em}LFHF\_2 & 451 & 77\\
+\hline
+\hspace{1em}LFHF\_3 & 456 & 79\\
+\hline
+\hspace{1em}LFHF\_4 & 440 & 82\\
+\hline
+\hspace{1em}LFHF\_5 & 445 & 66\\
+\hline
+\hspace{1em}LFHF\_6 & 444 & 71\\
+\hline
+\end{tabular}
+\end{table*}
+\efloatseparator
+ 
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[t]
+
+\caption{\label{tab:timeSummary}Summary of Features in the Time Domain}
+\centering
+\begin{tabular}{l|r|r|r}
+\hline
+variable & n & mean & sd\\
+\hline
+HRVi & 129 & 7.171186 & 1.992292\\
+\hline
+IRRR & 129 & 65.288888 & 28.536286\\
+\hline
+MADRR & 129 & 26.043073 & 10.932954\\
+\hline
+pNN50 & 129 & 19.830466 & 10.590041\\
+\hline
+rMSSD & 129 & 48.539227 & 13.137957\\
+\hline
+SDANN & 129 & 15.440406 & 15.451301\\
+\hline
+SDNN & 1537 & 69.429465 & 24.835250\\
+\hline
+SDNNIDX & 129 & 43.869882 & 12.781756\\
+\hline
+SDSD & 129 & 48.557984 & 13.143443\\
+\hline
+TINN & 129 & 112.049788 & 31.129567\\
+\hline
+\end{tabular}
+\end{table*}
+\efloatseparator
+ 
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[t]
+
+\caption{\label{tab:timeComparison}Between-Groups Permutation \emph{t}-test of Time Domain Features}
+\centering
+\begin{tabular}{l|r|r|r|r|r|r|r}
+\hline
+variable & mean.control & mean.episode & n.control & n.episode & sd.control & sd.episode & p.val\\
+\hline
+HRVi & 7.20 & 6.98 & 110 & 19 & 2.12 & 1.04 & 0.66\\
+\hline
+IRRR & 66.05 & 60.86 & 110 & 19 & 30.50 & 11.52 & 0.47\\
+\hline
+MADRR & 26.14 & 25.49 & 110 & 19 & 11.22 & 9.33 & 0.73\\
+\hline
+pNN50 & 19.99 & 18.93 & 110 & 19 & 10.93 & 8.54 & 0.69\\
+\hline
+rMSSD & 48.95 & 46.17 & 110 & 19 & 13.61 & 9.95 & 0.39\\
+\hline
+SDANN & 15.62 & 14.40 & 110 & 19 & 16.33 & 9.02 & 0.74\\
+\hline
+SDNN & 69.69 & 67.87 & 1318 & 219 & 25.23 & 22.32 & 0.31\\
+\hline
+SDNNIDX & 44.04 & 42.86 & 110 & 19 & 13.45 & 8.05 & 0.70\\
+\hline
+SDSD & 48.97 & 46.19 & 110 & 19 & 13.61 & 9.96 & 0.39\\
+\hline
+TINN & 112.55 & 109.14 & 110 & 19 & 33.06 & 16.20 & 0.66\\
+\hline
+\end{tabular}
+\end{table*}
+\efloatseparator
+ 
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[t]
+
+\caption{\label{tab:freqSummary}Summary of Features in the Frequency Domain}
+\centering
+\begin{tabular}{l|r|r|r}
+\hline
+variable & n & mean & sd\\
+\hline
+\multicolumn{4}{l}{\textbf{Heart Rate}}\\
+\hline
+\hspace{1em}Avg\_HR & 1497 & 79.50 & 12.13\\
+\hline
+\hspace{1em}Avg\_niHR & 1497 & 80.26 & 12.20\\
+\hline
+\hspace{1em}Start\_niHR & 1497 & 83.58 & 17.76\\
+\hline
+\hspace{1em}End\_niHR & 1497 & 81.34 & 15.69\\
+\hline
+\multicolumn{4}{l}{\textbf{High Frequency}}\\
+\hline
+\hspace{1em}HF\_1 & 515 & 282.34 & 382.80\\
+\hline
+\hspace{1em}HF\_2 & 528 & 271.35 & 351.14\\
+\hline
+\hspace{1em}HF\_3 & 535 & 262.68 & 291.35\\
+\hline
+\hspace{1em}HF\_4 & 522 & 248.05 & 289.56\\
+\hline
+\hspace{1em}HF\_5 & 511 & 254.59 & 317.44\\
+\hline
+\hspace{1em}HF\_6 & 515 & 295.68 & 432.77\\
+\hline
+\multicolumn{4}{l}{\textbf{Low Frequency}}\\
+\hline
+\hspace{1em}LF\_1 & 515 & 320.98 & 254.62\\
+\hline
+\hspace{1em}LF\_2 & 528 & 319.81 & 246.48\\
+\hline
+\hspace{1em}LF\_3 & 535 & 323.36 & 247.22\\
+\hline
+\hspace{1em}LF\_4 & 522 & 314.75 & 238.92\\
+\hline
+\hspace{1em}LF\_5 & 511 & 334.37 & 253.86\\
+\hline
+\hspace{1em}LF\_6 & 515 & 345.29 & 269.47\\
+\hline
+\multicolumn{4}{l}{\textbf{LF-HF Ratio}}\\
+\hline
+\hspace{1em}LFHF\_1 & 515 & 4.69 & 3.42\\
+\hline
+\hspace{1em}LFHF\_2 & 528 & 4.68 & 3.53\\
+\hline
+\hspace{1em}LFHF\_3 & 535 & 4.59 & 3.46\\
+\hline
+\hspace{1em}LFHF\_4 & 522 & 4.83 & 3.55\\
+\hline
+\hspace{1em}LFHF\_5 & 511 & 4.98 & 3.55\\
+\hline
+\hspace{1em}LFHF\_6 & 515 & 4.85 & 3.42\\
+\hline
+\end{tabular}
+\end{table*}
+\efloatseparator
+ 
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[t]
+
+\caption{\label{tab:freqComparison}Between-Groups Permutation \emph{t}-test of Frequency Domain Features}
+\centering
+\begin{tabular}{l|r|r|r|r|r|r|r}
+\hline
+variable & mean.control & mean.episode & n.control & n.episode & sd.control & sd.episode & p.val\\
+\hline
+\multicolumn{8}{l}{\textbf{Heart Rate}}\\
+\hline
+\hspace{1em}Avg\_HR & 79.22 & 81.20 & 1282 & 215 & 12.25 & 11.30 & 0.03\\
+\hline
+\hspace{1em}Avg\_niHR & 80.01 & 81.76 & 1282 & 215 & 12.31 & 11.41 & 0.05\\
+\hline
+\hspace{1em}Start\_niHR & 83.56 & 83.70 & 1282 & 215 & 18.21 & 14.85 & 0.92\\
+\hline
+\hspace{1em}End\_niHR & 80.77 & 84.71 & 1282 & 215 & 15.55 & 16.12 & 0.00\\
+\hline
+\multicolumn{8}{l}{\textbf{High Frequency}}\\
+\hline
+\hspace{1em}HF\_1 & 272.59 & 333.79 & 433 & 82 & 329.02 & 591.06 & 0.18\\
+\hline
+\hspace{1em}HF\_2 & 263.68 & 316.23 & 451 & 77 & 305.91 & 546.34 & 0.22\\
+\hline
+\hspace{1em}HF\_3 & 257.48 & 292.74 & 456 & 79 & 257.94 & 438.11 & 0.31\\
+\hline
+\hspace{1em}HF\_4 & 244.61 & 266.51 & 440 & 82 & 259.52 & 416.97 & 0.55\\
+\hline
+\hspace{1em}HF\_5 & 262.25 & 202.95 & 445 & 66 & 335.09 & 143.31 & 0.14\\
+\hline
+\hspace{1em}HF\_6 & 305.57 & 233.80 & 444 & 71 & 460.86 & 163.01 & 0.18\\
+\hline
+\multicolumn{8}{l}{\textbf{Low Frequency}}\\
+\hline
+\hspace{1em}LF\_1 & 322.90 & 310.85 & 433 & 82 & 255.19 & 252.93 & 0.70\\
+\hline
+\hspace{1em}LF\_2 & 315.46 & 345.28 & 451 & 77 & 245.66 & 251.30 & 0.33\\
+\hline
+\hspace{1em}LF\_3 & 326.12 & 307.45 & 456 & 79 & 253.17 & 210.27 & 0.53\\
+\hline
+\hspace{1em}LF\_4 & 309.79 & 341.38 & 440 & 82 & 235.44 & 256.66 & 0.27\\
+\hline
+\hspace{1em}LF\_5 & 330.80 & 358.43 & 445 & 66 & 252.93 & 260.77 & 0.41\\
+\hline
+\hspace{1em}LF\_6 & 347.62 & 330.70 & 444 & 71 & 273.40 & 244.74 & 0.63\\
+\hline
+\multicolumn{8}{l}{\textbf{LF-HF Ratio}}\\
+\hline
+\hspace{1em}LFHF\_1 & 4.72 & 4.57 & 433 & 82 & 3.46 & 3.20 & 0.71\\
+\hline
+\hspace{1em}LFHF\_2 & 4.68 & 4.67 & 451 & 77 & 3.50 & 3.72 & 0.97\\
+\hline
+\hspace{1em}LFHF\_3 & 4.72 & 3.86 & 456 & 79 & 3.49 & 3.19 & 0.04\\
+\hline
+\hspace{1em}LFHF\_4 & 4.78 & 5.09 & 440 & 82 & 3.54 & 3.60 & 0.46\\
+\hline
+\hspace{1em}LFHF\_5 & 4.98 & 5.02 & 445 & 66 & 3.52 & 3.74 & 0.94\\
+\hline
+\hspace{1em}LFHF\_6 & 4.80 & 5.14 & 444 & 71 & 3.43 & 3.35 & 0.44\\
+\hline
+\end{tabular}
+\end{table*}
+\efloatseparator
+ 

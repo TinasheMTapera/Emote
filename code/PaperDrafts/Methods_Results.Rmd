@@ -9,6 +9,7 @@ always_allow_html: yes
 ---
 
 ```{r packages and setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(fig.width=9, fig.height=6) 
 suppressPackageStartupMessages(
   {
     library(tidyverse, quietly = TRUE)
@@ -91,21 +92,28 @@ df_freq <- read_csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_ou
 df_time <- read_csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_out.csv'))
 ```
 # Methods
+
+##Participants.
+
+The current study included 21 adults ($M_{age}= 34.05$, $SD_{age}= 14.41$, $range: 19-67$) with clinically significant emotional eating behaviors (defined as experiencing an emotional eating episode at least four times (e.g. at least once a week) over the last 28 days. Participants were required to be proficient in English and be able to commit to attending both in lab assessments as well as fulfill all the study requirements. The sample included 18 women (85.7% of the sample) and 3 men (14.3% of the sample). In the sample 61.9% identified as White/European American/Caucasian, 14.29% identified as multiracial, 9.52% identified as Asian American, 9.52% identified as Asian/Pacific-Islander, and 4.76% identified as “Other”. At baseline participants had an average BMI of 27.79 ($SD= 6.92$, $range= 20.30-49.30$) and reported an average of 34.39 ($SD= 6.92$, $range= 11-60$) emotional eating episodes in the past 28 days. The study was approved by the Institutional Review Board. 
+
+##Procedures.
+
+After completing a phone screen to confirm initial eligibility, participants attended an in-lab baseline assessment where they completed a series of self-report measures and where physiological signals were collected via the Empatica E4 device as participants completed behavioral tasks (the Mirror Tracing Persistence Task and the Paced Auditory Serial Addition Test) designed to induce frustration. Following completion of the baseline assessment, participants received instructions on how to use the Empatica E4 device and an EMA app [PACO app; @evans2016] at home for a four-week data collection period. During the data collection period, participants were asked to wear the Empatica E4 device every day during all waking hours. Participants were also asked to use the event button located on the E4 to record urges to eat due to their emotions (one button press) and record the occurrence of an emotional eating episode (two button presses). Participants were instructed to upload the data from their Empatica wristband to a Manager program that was installed on their computer at the end of every day. Participants were also instructed to respond to six EMA surveys which were distributed semi-randomly throughout the hours of 8am and 10pm via the PACO app during the data collection period. The EMA surveys assessed for the occurrence of emotional eating episodes and urges since the last survey that were not already reported via button push or a self-initiated EMA survey and assessed the presence or absence of 14 emotional states. Participants were asked to self-initiate an EMA survey whenever an emotional eating episode occurred, self-report surveys accounted for (6.86%) of total emotional eating episodes reported. Participants also filled out an additional survey at the end of every day which included questions about alcohol use and exercise.  After the four weeks, a post-study assessment was conducted. At the post-study assessment measures of emotion, emotional eating, and the tasks to induce emotion were again conducted. Participants also filled out a survey containing questions about the feasibility and acceptability of using the PACO app and wearing the Empatica E4 wristband.
+
 Data analyses were carried out in `r R.version$version.string` and Python 2.7. In accordance with previous studies examining the relation between HRV and discrete eating episodes [@friesen_lin_schurman_andre_callum_2007; @harthoorn_dransfield_2007; @ranzenhofer2016], physiological data collected in the 30-minute period preceding the eating episode were examined. For each participant, the inter-beat interval (IBI) for each self-reported survey was selected, where surveys were either self-reported at the time of an eating episode, or pseudo-randomly triggered in the app. This resulted in an initial total of $n=$ `r all_surveys %>% filter(Y == "Episode") %>% nrow()` emotional eating episodes and $n=$ `r all_surveys %>% filter(Y == "Control") %>% nrow()` control episodes before cleaning the data.
 
 Using the RHRV package [@R-RHRV], IBI data streams were filtered, interpolated, and artifacts were removed, using thresholds and parameters in compliance with normative reported values for heart rate variability features [@shaffer_ginsberg_2017]. Observations that did not meet normative criteria were removed. Consistent with existing research, features of heart rate variability were extracted from both the time and frequency domain to measure both the amount of variability and the amount of signal energy in the 30-minute period [@shaffer_ginsberg_2017; @Rubin:2016:TFC:3021319.3021332].
   
-  The following heart rate variability features were extracted from the IBI streams for each observation in the time domain: *SDNN* (Standard Deviation of all filtered inter-beat intervals); *SDANN* (Standard Deviation of inter-beat intervals between all successive heartbeats); *SDNNIX* (Mean of the standard deviations of all the filtered inter-beat intervals for each 5 min segment of the IBI stream); *pNN50* (Percentage of successive inter-beat intervals that differ by more than 50 ms); *SDSD* (Standard Deviation of Successive Differences of inter-beat intervals); *rMSSD* (Root Mean Square of Successive Differences); *IRRR* (length of the interval determined by the first and the third quantile of the inter-beat interval); *MADRR* (Median of the Absolute values of the successive Differences between the inter-beat intervals); *TINN* (Triangular Interpolation of inter-beat interval histogram); and *HRVi* (Heart Rate Variability index) [@R-RHRV].
+The following heart rate variability features were extracted from the IBI streams for each observation in the time domain: *SDNN* (Standard Deviation of all filtered inter-beat intervals); *SDANN* (Standard Deviation of inter-beat intervals between all successive heartbeats); *SDNNIX* (Mean of the standard deviations of all the filtered inter-beat intervals for each 5 min segment of the IBI stream); *pNN50* (Percentage of successive inter-beat intervals that differ by more than 50 ms); *SDSD* (Standard Deviation of Successive Differences of inter-beat intervals); *rMSSD* (Root Mean Square of Successive Differences); *IRRR* (length of the interval determined by the first and the third quantile of the inter-beat interval); *MADRR* (Median of the Absolute values of the successive Differences between the inter-beat intervals); *TINN* (Triangular Interpolation of inter-beat interval histogram); and *HRVi* (Heart Rate Variability index) [@R-RHRV]. *SDNN* reflects the power of the components responsible for variability in heart rhythm, while *SDANN*, *SDNNIX*, *pNN50*, *SDSD*, *rMSSD*, *IRRR*, and *MADRR* reflect different statistical aspects of the high frequency variation in heart rhythm. Finally, *TINN* and *HRVi* represent geometric measures calculated from the density distribution of inter-beat intervals [@R-RHRV].
   
-  *SDNN* reflects the power of the components responsible for variability in heart rhythm, while *SDANN*, *SDNNIX*, *pNN50*, *SDSD*, *rMSSD*, *IRRR*, and *MADRR* reflect different statistical aspects of the high frequency variation in heart rhythm. Finally, *TINN* and *HRVi* represent geometric measures calculated from the density distribution of inter-beat intervals [@R-RHRV].
+In the frequency domain, features extracted included the mean non-interpolated heart rate (*mean niHR*), the mean interpolated Heart Rate (*mean HR*), and the heart rate values at the start and end of the 30 minute window (*Start HR*, *End HR*). Additional frequency domain features were extracted from the 30 minute streams by applying a Fourier transform to the heart rate signal, resulting in a spectrogram of the heart rate in the low and high frequency ranges. To extract a sufficient amount of information from these spectograms and increase the variance of our data, the spectrogram was split into 5 minute windows, as has been done previously in studies using heart rate variability to predict event-level behavior [@Rubin:2016:TFC:3021319.3021332]. Mean features were extracted from each of these windows — the mean Low Frequency signal ($LF_1$, $LF_2$,… $LF_6$), the mean High Frequency signal ($HF_1$, $HF_2$,… $HF_6$), and the mean Low Frequency-High Frequency Ratio ($LFHF_1$, $LFHF_2$,… $LFHF_6$).
   
-  In the frequency domain, features extracted included the mean non-interpolated heart rate (*mean niHR*), the mean interpolated Heart Rate (*mean HR*), and the heart rate values at the start and end of the 30 minute window (*Start HR*, *End HR*). Additional frequency domain features were extracted from the 30 minute streams by applying a Fourier transform to the heart rate signal, resulting in a spectrogram of the heart rate in the low and high frequency ranges. To extract a sufficient amount of information from these spectograms and increase the variance of our data, the spectrogram was split into 5 minute windows, as has been done previously in studies using heart rate variability to predict event-level behavior [@Rubin:2016:TFC:3021319.3021332]. Mean features were extracted from each of these windows — the mean Low Frequency signal ($LF_1$, $LF_2$,… $LF_6$), the mean High Frequency signal ($HF_1$, $HF_2$,… $HF_6$), and the mean Low Frequency-High Frequency Ratio ($LFHF_1$, $LFHF_2$,… $LFHF_6$).
-  
-  In order to examine any differences between means of the features, and address the issue of group imbalance affecting statistical power, we conducted between-groups permutation T-tests with each variable in the time and frequency domain [@R-DAAG; @good2013permutation]. Then, using the CARET package [@R-caret], a Support Vector Machine with a polynomial kernel was implemented to predict episodes from controls. In order to address the group imbalance in this stage, all features were standardized, while controls were randomly downsampled and episodes were randomly upsampled using the ROSE package [@R-ROSE]. To evaluate model performance, models were tested using 4-fold cross validation, training models on 3/4 of the data and using the remaining data evaluate the model accuracy, specificity, and sensitivity.
+In order to examine any differences between means of the features, and address the issue of group imbalance affecting statistical power, we conducted between-groups permutation T-tests with each variable in the time and frequency domain [@R-DAAG; @good2013permutation]. Then, using the CARET package [@R-caret], a Support Vector Machine with a polynomial kernel was implemented to predict episodes from controls. In order to address the group imbalance in this stage, all features were standardized, while controls were randomly downsampled and episodes were randomly upsampled using the ROSE package [@R-ROSE]. To evaluate model performance, models were tested using 4-fold cross validation, training models on 3/4 of the data and using the remaining data evaluate the model accuracy, specificity, and sensitivity.
   
 # Results
 
-## Missingness
+## Missingness.
 ```{r source-missingness, echo = FALSE}
 df_time_nrow <- df_time %>% 
   # use params threshold = 250, windows = 2
@@ -134,10 +142,10 @@ df_freq_nrow <- df_freq %>%
 (ref:missingness-tab) Number of Observations Extracted for Each Feature
 
 
-After cleaning the dataset of erroneous surveys (e.g. no usable IBI data; overlapping survey responses; control observations with high self-reported stress), and filtering IBI streams that did not meet filtering quality criteria for preprocessing, the data consisted of $n=$ `r df_time_nrow %>% filter(Y == "Episode") %>% pull(n)` emotional eating episodes and $n=$ `r df_time_nrow %>% filter(Y == "Control") %>% pull(n)` controls. Of these clean observations, HRV features were extracted from the IBI streams, although even with filtering, many IBI streams were too sparse to compute HRV features. Figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate the completeness of data in the extracted time and frequency domain features, with table \@ref(tab:missingness-tab) showing the final number of observations used for analysis. Much of the data missing from the time domain is due to the fact that these features derived from SDNN and are dependent on having sufficient data in this feature.
+After cleaning the dataset of erroneous surveys (e.g. no usable IBI data; overlapping survey responses; control observations with high self-reported stress), and filtering IBI streams that did not meet filtering quality criteria for preprocessing, the data consisted of $n=$ `r df_time_nrow %>% filter(Y == "Episode") %>% pull(n)` emotional eating episodes and $n=$ `r df_time_nrow %>% filter(Y == "Control") %>% pull(n)` controls. Of these clean observations, HRV features were extracted from the IBI streams, although even with filtering, many IBI streams were too sparse to compute HRV features. Figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate the completeness of data in the extracted time and frequency domain features, with table \@ref(tab:missingness-tab) showing the final number of observations used for analysis. Much of the data missing from the time domain is due to the fact that these features are derived from SDNN and are dependent on having sufficient data in this feature.
 
 
-```{r missingness-time, fig.width=9, fig.asp=1, echo = FALSE, fig.cap='(ref:missingness-time)'}
+```{r missingness-time, echo = FALSE, fig.cap='(ref:missingness-time)'}
 df_time %>% 
   # use params threshold = 250, windows = 2
   filter(threshold == 250 & winds == 2) %>%
@@ -152,7 +160,7 @@ df_time %>%
 ```
 
 
-```{r missingness-freq, fig.width=9, fig.asp=1, fig.cap='(ref:missingness-freq)', echo = FALSE}
+```{r missingness-freq, fig.cap='(ref:missingness-freq)', echo = FALSE}
 df_freq %>% 
   # use params threshold = 100, windows = 2
   filter(threshold == 100 & winds == 2) %>%
@@ -210,7 +218,7 @@ bind_rows(missingnesstable_time, missingnesstable_freq)%>%
   kableExtra::group_rows("LF-HF Ratio", 27, 32)
 ```
 
-## Comparison of Means
+## Comparison using Episodes and Controls using t-tests.
 
 ```{r source-tests, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
 df_time_summaries <- df_time %>% 
@@ -302,7 +310,7 @@ df_freq_summaries <- df_freq %>%
 
 (ref:timeSummary) Summary of Features in the Time Domain
 
-The mean values for each time-domain features is shown in Table \@ref(tab:timeSummary) below:
+The mean values for each time-domain feature are shown in Table \@ref(tab:timeSummary).
 
 ```{r timeSummary, echo = FALSE, warning = FALSE, message = FALSE, results='asis'}
 
@@ -332,7 +340,7 @@ df_time_summaries %>%
   kable_styling()
 ```
 
-```{r timeComparisonPlot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:timeComparisonPlot)', fig.width=9, fig.asp=1}
+```{r timeComparisonPlot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:timeComparisonPlot)'}
 df_time_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
   spread(key = statistic, value = value) %>%
@@ -344,7 +352,7 @@ df_time_summaries %>%
 
 (ref:freqSummary) Summary of Features in the Frequency Domain
 
-A similar approach was taken to analyze the frequency domain. Table \@ref(tab:freqSummary) below outlines the mean values of features:
+A similar approach was taken to analyze the frequency domain. Table \@ref(tab:freqSummary) outlines the mean values of features.
 
 ```{r freqSummary, echo = FALSE, warning = FALSE, message = FALSE}
 order = c("Avg_HR", "Avg_niHR", "Start_niHR", "End_niHR",
@@ -369,7 +377,7 @@ df_freq_summaries %>%
 
 (ref:freqComparisonPlot) Between-Groups Permutation *t*-test of Frequency Domain Features: a) Heart Rate Features; b) High Frequency Features; c) Low Frequency Features d) Low Frequency-High Frequency Ratio Features
 
-Using the same Two-*t* permutation approach, we found signficant differences in means for Average Heart Rate, Average non-interpolated Heart Rate, Ending non-interpolated Heart Rate, and the LF-HF ratio in the third window, shown in Table \@ref(tab:freqComparison)
+Using the same Two-*t* permutation approach, we found signficant differences in means for Average Heart Rate, Average non-interpolated Heart Rate, Ending non-interpolated Heart Rate, and the LF-HF ratio in the third window, shown in Table \@ref(tab:freqComparison).
 ```{r freqComparison, echo = FALSE, warning = FALSE, message = FALSE}
 df_freq_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
@@ -385,7 +393,7 @@ df_freq_summaries %>%
 ```
 
 
-```{r freqComparisonPlot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlot)', fig.width=9, fig.asp=1}
+```{r freqComparisonPlot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlot)'}
 
 faceted <- df_freq_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
@@ -405,18 +413,18 @@ plots <- pmap(list(df = faceted$data,
              tip = c(0.3, 0.05, 0.1, 0.08)),
         permutation_plot)
 
-ggpubr::ggarrange(plotlist = plots, common.legend = T, font.label = list(face = 'bold', family = 'Times'), labels = paste0(letters[1:4], ")"))
+#ggpubr::ggarrange(plotlist = plots, common.legend = T, font.label = list(face = 'bold', family = 'Times'), labels = paste0(letters[1:4], ")"))
 ```
 
 (ref:freqComparisonPlotA) Between-Groups Permutation *t*-test of Frequency Domain Heart Rate Features
 
-(ref:freqComparisonPlotB) Between-Groups Permutation *t*-test of High Frequency Features; c) Low Frequency Features d) Low Frequency-High Frequency Ratio Features
+(ref:freqComparisonPlotB) Between-Groups Permutation *t*-test of High Frequency Features
 
 (ref:freqComparisonPlotC) Between-Groups Permutation *t*-test of Low Frequency Features
 
 (ref:freqComparisonPlotD) Between-Groups Permutation *t*-test of Low Frequency-High Frequency Ratio Features
 
-```{r freqComparisonPlotA, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotA)', fig.width=9, fig.asp=1}
+```{r freqComparisonPlotA, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotA)'}
 df_freq_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
   spread(key = statistic, value = value) %>%
@@ -436,7 +444,7 @@ df_freq_summaries %>%
 
 ```
 
-```{r freqComparisonPlotB, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotB)', fig.width=9, fig.asp=1}
+```{r freqComparisonPlotD, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotD)'}
 df_freq_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
   spread(key = statistic, value = value) %>%
@@ -449,14 +457,14 @@ df_freq_summaries %>%
     str_detect(variable, "HR") ~ "Heart Rate"
     )
   ) %>%
-  filter(facet == "High_Frequency") %>%
+  filter(facet == "LF-HF Ratio") %>%
   permutation_plot(., tip = 0.05, height = 1.1)+
       labs(caption = expression(~italic(p)~"-values for permutation "~italic(t)~"-test with 10,000 permutations shown")) +
   ylab(expression(paste("Mean ", ms^{2})))
 
 ```
 
-## Machine Learning
+## Machine Learning Analyses.
 
 ```{r ml-functions, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
 modelfit <- function(data){
@@ -754,9 +762,9 @@ freq_domain_deltas <- bind_rows(perturbed_freq_1, perturbed_freq_2, perturbed_fr
 
 (ref:ml-metrics) Machine Learning Evaluation Metrics
 
-Machine learning models were implemented using time domain and frequency domain features separately. In order to run machine learning prediction of emotional eating episodes, observations with complete data for all features in the time or frequency domain were used, data within each participant were scaled and centered, and observations were randomly upsampled (from episodes) or downsampled (from controls) to balance the number of observations and controls. SVM models were fit iteratively using 3/4's of the data, and evaluated on the remaining 1/4. Figure \@ref(fig:ml-metrics) show the mean accuracy, sensitivity, and specificity of the SVM across these four folds.
+Machine learning models were implemented using time domain and frequency domain features separately. In order to run machine learning prediction of emotional eating episodes, only observations with complete data for all features in the time or frequency domain were used, data within each participant were scaled and centered, and observations were randomly upsampled (from episodes) or downsampled (from controls) to balance the number of observations and controls. SVM models were fit iteratively using 3/4's of the data, and evaluated on the remaining 1/4. Figure \@ref(fig:ml-metrics) shows the mean accuracy, sensitivity, and specificity of the SVM across these four folds.
 
-```{r ml-metrics, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:ml-metrics)', fig.width=9, fig.asp=1}
+```{r ml-metrics, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:ml-metrics)'}
 ml_time <- results_time %>%
   enframe(name = "Metric", value = "Value") %>%
   mutate(Metric = ifelse(Metric == "auc", "AUC", Metric),
@@ -770,7 +778,7 @@ ml_freq <- results_freq %>%
 bind_rows(ml_time, ml_freq) %>%
   ggplot(aes(x=Metric, y=Value, fill=Domain))+
   geom_col(position = "dodge") +
-  geom_text(aes(label=formatC(Value, 2), y = Value + 0.025), position = position_dodge(width=0.9), vjust=-0.25) +
+  geom_text(aes(label=formatC(Value, 2), y = Value + 0.025), position = position_dodge(width=0.9), vjust=-0.25, family = "Times") +
   theme_minimal() +
   scale_fill_viridis_d() +
   theme(text = element_text(size=15, family = "Times"))
@@ -783,7 +791,7 @@ bind_rows(ml_time, ml_freq) %>%
 
 To interpret the feature importance in each of these models, ROC curve analysis was conducted on each feature on the model as recommended by Khun @R-caret, by systemmatically removing each variable from the model and comparing the achieved Area Under the Curve (AUC) against that of the full model. In order to assess whether or not these features discriminate well between episodes and controls, models were fitted on the original data and the fitted values were perturbed for each variable. The probabilities of predictions were extracted from each perturbed model and compared to the probabilities of the original model, to understand how increasing values of the features increased or decreased the likelihood of an eating episode. Figures \@ref(fig:varImportance-time) and \@ref(fig:varImportance-freq) show the results of this analysis.
 
-```{r varImportance-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-time)', fig.width=9, fig.asp=1}
+```{r varImportance-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-time)'}
 time_domain_deltas %>% 
   group_by(variable) %>%
   summarise(Delta_Probability = mean(Delta_Probability)) %>%
@@ -815,12 +823,12 @@ time_domain_deltas %>%
       x = "Feature",
       y = "Decrease in Model AUC When Feature Removed"
     ) +
-  scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Feature Perturbed")
+  scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Perturbed")
 ```
 
-In the time domain, the most important feature by measure of decrease in model AUC was *SDANN*, followed by *SDNN* and *MADRR*. Increasing values in *SDANN* by 1 unit tended to decrease the probability of observations being predicted as episode, suggesting that higher levels of *SDANN* decrease the likelihood of an eating episode. This same inference can be made of *MADRR*. In the case of *SDNN*, a 1 unit increase in values of this feature increased the probability of observations being predicted as episodes.
+In the time domain, the most important feature by measure of scaled decrease in model AUC was *SDANN*, followed by *SDNN* and *MADRR*. Increasing values in *SDANN* by 1 unit tended to decrease the probability of observations being predicted as episode, suggesting that higher levels of *SDANN* decrease the likelihood of an eating episode. This same inference can be made of *MADRR*. In the case of *SDNN*, a 1 unit increase in values of this feature increased the probability of observations being predicted as episodes.
 
-```{r varImportance-freq, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-freq)', fig.width=9, fig.asp=1}
+```{r varImportance-freq, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-freq)'}
 freq_domain_deltas %>% 
   group_by(variable) %>%
   summarise(Delta_Probability = mean(Delta_Probability)) %>%
@@ -853,27 +861,33 @@ freq_domain_deltas %>%
       x = "Feature",
       y = "Decrease in Model AUC When Feature Removed"
     ) +
-  scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Feature Perturbed")
+  scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Perturbed")
 ```
 
-In the frequency domain, the most important features by measure of decrease in model AUC were the High Frequency windows $HF_2$, $HF_6$, and $HF_3$. Increasing values in $HF_2$ by 1 unit tended to decrease the probability of observations being predicted as episode, suggesting that stronger signals in the high frequency band at this time in the window decrease the likelihood of an eating episode. This inference is the opposite, however, for $HF_6$ and $HF_3$, which show that increasing these variables' values by one unit tends to increase the likelihood of an eating episode. Interestingly, while the heart rate variables *Avg_HR*, *Avg_niHR*, and *End_niHR* had significantly different means, their affect on the achieved AUC was relatively minimal, indicating they had very small feature importance for this model.
+In the frequency domain, the most important features by measure of decrease in model AUC were the High Frequency windows $HF_2$, $HF_6$, and $HF_3$. Increasing values in $HF_2$ by one unit tended to decrease the probability of observations being predicted as episode, suggesting that stronger signals in the high frequency band at this time in the window decrease the likelihood of an eating episode. This inference is the opposite, however, for $HF_6$ and $HF_3$, which show that increasing these variables' values by one unit tends to increase the likelihood of an eating episode. Interestingly, while the heart rate variables *Avg_HR*, *Avg_niHR*, and *End_niHR* had significantly different means, their affect on the achieved AUC was relatively minimal, indicating they had very small feature importance for this model.
 
 (ref:highfreq-timeseries) Time Series of High Frequency Band
 
-To better interpret how the signal in the high frequency band of heart rate varies through the 30-minute window, we plot these values in Figure \@ref(fig:highfreq-timeseries) below:
+To better interpret how the signal in the high frequency band of heart rate varies through the 30-minute window, we plot these values in Figure \@ref(fig:highfreq-timeseries).
 
-```{r highfreq-timeseries, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:highfreq-timeseries)', fig.width=9, fig.asp=1}
+```{r highfreq-timeseries, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:highfreq-timeseries)'}
 df_freq_ml %>%
   gather('variable', 'value', HF_1:HF_6) %>%
   ggplot(aes(x=variable, y=value, colour=Y)) +
-  geom_jitter(alpha = 0.6, width = 0.15) +
-  stat_smooth(aes(group = Y), method = "loess") +
-  labs(x = "Frequency Band Window", y = "Z-Score") +
-  theme_minimal() +
-  scale_color_viridis_d()
+    geom_jitter(alpha = 0.6, width = 0.15) +
+    stat_smooth(aes(group = Y), method = "loess") +
+    labs(x = "Frequency Band Window", y = "Z-Value") +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        text = element_text(size=15, family = "Times")
+    ) +
+    scale_color_viridis_d()
 ```
 
 The visualisation shows that at the second window, $HF_2$, there is an inverse relationship between the trajectories of episodes and controls, which may represent the high variable importance of $HF_2$. $HF_6$ shows a similar inverse trend, as increasing values of this variable are associated with episodes while decreasing values are associated with controls.
+
+
 
 # Discussion
 

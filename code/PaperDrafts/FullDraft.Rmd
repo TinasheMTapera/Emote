@@ -1,0 +1,104 @@
+---
+title             : "Momentary Changes in Heart Rate Variability Can Detect Risk for Experiencing Emotional Eating Episodes"
+shorttitle        : "Changes in HRV Predict Emotional Eating"
+
+author: 
+  - name          : "Adrienne S. Juarascio, Ph.D."
+    affiliation   : "1,2"
+    corresponding : yes    # Define only one corresponding author
+    address       : "Center for Weight, Eating, and Lifestyle Science, Drexel University, Stratton Hall, 3141 Chestnut Street, Philadelphia, PA 19104"
+    email         : "asj32@drexel.edu"
+  - name          : "Rebecca Crochiere, B.A."
+    affiliation   : "1,2"
+  - name          : "Tinashe Michael Tapera, M.S."
+    affiliation   : "2,4"
+  - name          : "Madeline Palermo, M.S."
+    affiliation   : "3"
+  - name          : "Zoe Zhang, Ph.D."
+    affiliation   : "2"
+
+affiliation:
+  - id            : "1"
+    institution   : "Center for Weight, Eating, and Lifestyle Sciences (WELL Center), Drexel University, Stratton Hall, 3141 Chestnut Street Philadelphia, PA 19104"
+  - id            : "2"
+    institution   : "Department of Psychology, Drexel University, Stratton Hall, 3141 Chestnut Street, Philadelphia, PA 19104"
+  - id            : "3"
+    institution   : "Department of Psychology, University of South Florida, 4202 E Fowler Ave, Tampa, FL 33202, USA"
+  - id            : "4"
+    institution   : "Department of Psychiatry, Perelman School of Medicine, University of Pennsylvania, Philadelphia, PA, 19104"
+  
+
+authornote: |
+  Add complete departmental affiliations for each author here. Each new line herein must be indented, like this line.
+
+  Enter author note here.
+
+abstract: |
+  Objective: A range of evidence supports that emotion dysregulation contributes to maladaptive eating behaviors broadly and may function as a powerful antecedent to emotional eating, specifically. New passive sensing technology offers the prospect of detecting emotion regulation in real-time through measurement of heart rate variability (HRV), a transdiagnostic bio-signal for emotion regulation, which may in turn predict risk of a maladaptive eating behavior. In the current study, our primary aim was to test whether changes in momentary HRV can be used to detect risk of experiencing an emotional eating episode in an ecologically valid setting. Method: Participants were 21 adults with clinically significant emotional eating behaviors. The Empatica E4 wrist-sensor was worn to measure heart rate variability and emotional eating episodes were reported using ecological momentary assessment for four weeks. Time and frequency domain features of HRV were extracted in the 30-minute period preceding emotional eating episodes and control episodes. Machine learning models were implemented using time domain and frequency domain features. Results: We found that HRV domain features significantly differed in the minutes preceding emotional eating episodes as compared to controls, though no such differences were found in the corresponding time-domain features. Discussion: Future work should be conducted to improve existing ambulatory sensors for HRV to allow for the collection of more valid and complete HRV data, which would allow researchers to better explore the ways in which wearable sensor technology may replace current self-report measures of real-time emotional states and power just-in-time interventions targeting maladaptive eating behaviors.
+  
+keywords          : "emotion regulation, heart rate variability, emotional eating, sensor technology, ecological momentary assessment"
+wordcount         : "X"
+
+bibliography      : ["citations.bib", "emote.bib"]
+
+floatsintext      : no
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+linenumbers       : yes
+mask              : no
+draft             : no
+
+documentclass     : "apa6"
+classoption       : "man"
+output            : 
+  papaja::apa6_pdf:
+    latex_engine: xelatex
+---
+
+```{r setup, include = FALSE}
+library("papaja")
+options(tinytex.verbose = TRUE)
+```
+
+# Introduction
+
+Emotion dysregulation (i.e., low levels of awareness, understanding, and acceptance of emotions, and the inability to engage in adaptive behaviors regardless of emotional state) is a broad, transdiagnostic risk and maintenance factor for numerous psychological disorders (e.g., substance abuse disorders, eating disorders, anxiety disorders) and is associated with high dropout from standard psychological treatments, poor compliance with treatment recommendations, and worse therapeutic outcomes. Maladaptive eating behaviors (e.g., disordered eating behaviors, eating behaviors that can facilitate weight gain) are one set of behaviors that are often strongly maintained by emotion dysregulation [e.g., @RN188; @RN187; @RN186; @RN185; @RN167; @RN153; @RN190]. A growing body of evidence suggests that individuals with eating disorders often experience elevated rates of emotion dysregulation, and disordered eating behaviors themselves can serve an emotion regulatory function [@RN153; @smyth_et_al_2007]. For example, several types of negative emotions, including fear, guilt, hostility, and sadness, have been shown to intensify prior to and be mitigated following binge eating and purging episodes [@berg_crosby_cao_peterson_engel_mitchell_wonderlich_2013], providing temporal evidence to suggest that these maladaptive eating behaviors can serve as external regulators of emotion. Emotion dysregulation can also maintain maladaptive eating behaviors outside of diagnosable eating disordered symptoms such as emotional eating (i.e., the tendency to eat in response to emotional experiences), a behavior strongly linked to weight gain and poor long-term health outcomes [@arnow1995emotional; @frayn2018emotional; @masheb2006emotional; @ricca2009correlations]. Numerous theories have proposed a negative reinforcement-based function for emotion-driven eating [@heatherton1991binge] and studies utilizing ecological momentary assessment [EMA; @haedt2011revisiting], naturalistic recalls and diaries [@deaver2003evaluation; @johnson1995naturalistic; @lynch2000does], and laboratory-based studies [@cools1992emotional; @tuschen1999psychological] have all demonstrated that negative affect prospectively increases the likelihood of a variety of maladaptive eating episodes. Thus, a range of evidence supports that emotion dysregulation contributes to maladaptive eating behaviors broadly and may function as a powerful antecedent to emotional eating, specifically.
+
+Given the clear evidence that emotion dysregulation can maintain maladaptive eating behaviors, it is perhaps unsurprising that improvement in emotion regulation is associated with treatment success for a range of maladaptive eating behaviors [e.g., @RN160; @RN150; @RN147; @RN148; @RN157; @RN155; @RN149]. Accordingly, a range of emotion-focused treatment approaches have been developed for maladaptive eating behaviors (e.g., integrative cognitive-affective therapy for bulimia nervosa, emotion acceptance behavior therapy for anorexia nervosa, and dialectical behavior therapy for binge eating) [@RN162; @RN158; @RN150; @RN147; @RN148; @RN149; @RN156; @RN165], many of which have shown initial promise. However, to date, when emotion-focused treatment approaches are directly compared to existing cognitive and/or behavioral treatment (CBTs) approaches, the results largely fail to demonstrate any superiority of these treatment approaches [@RN162; @RN161; @RN165]. Although relatively few RCTs have been conducted comparing CBTs to emotion-focused treatments for maladaptive eating behaviors and more research is sorely needed in this area, the existing data suggest that our current treatment approaches are failing to achieve optimal rates of efficacy.
+
+One possible reason that emotion-focused treatments may be underperforming is that even after receiving a treatment designed to improve emotion dysregulation, many individuals continue to experience difficulty regulating emotions after treatment. While large average effect size improvements in emotion regulation are often observed in these studies [@RN160; @RN157; @RN155], some studies have found that these improvements are similar to those observed in CBTs [@RN165] and that variability in response is common, with many patients continuing to experience difficulty regulating emotions by the end of treatment [@RN168; @RN170]. Identifying new methods to improve emotion regulation outside of conventional emotion-focused treatments may be needed to sufficiently engage this clinical target and adequately improve treatment outcomes.
+
+Most emotion-focused treatments approaches that focus on maladaptive eating behavior try to improve emotion regulation through in-session provision of emotion regulatory skills and instructions to practice these skills at home and utilize the skills during times of distress. Although these skills can be effective when adequately employed, many patients fail to sufficiently utilize these skills in their daily life [@RN166], severely limiting the success of these traditionally-delivered interventions, as most if not all maladaptive eating episodes occur outside the therapy office. As such, there is a need to develop novel ways to intervene on behavior as it occurs in daily life. In fact, new technological advances are offering the opportunity to monitor risk factors, e.g., rising negative emotion, in individuals’ natural environment, allowing for interventions to be delivered and received in real-time and in ecologically valid settings.
+
+One methodological approach that has shown increasing popularity and promise in this regard is ecological momentary intervention (EMI), which gathers self-report data multiple times per day, often via smartphones, and delivers interventions when risk factors are reported. For example, an EMI aiming to prevent emotion-triggered maladaptive eating could assess emotion multiple times per day via a mobile survey and deliver in-the-moment emotion-focused interventions when strong negative emotions are endorsed, with the aim of thwarting a subsequent maladaptive eating episode. Nevertheless, despite its growing use and advantages, EMI has several important limitations. Notably, the efficacy of EMI is contingent on users’ accurate and frequent self-reporting, which is time-consuming and inherently burdensome. Additionally, an individual may be unwilling (e.g., due to ambivalent motivation) or unable (e.g., due to poor emotional awareness) to accurately record the emotional experiences that are needed to accurately power an EMI system, especially when in an intense, negative emotional state.
+
+Fortunately, the advent of new technology has offered other real-time, ecologically-valid methodologies that are not subject to these same limitations and thus offer discrete advantages over EMIs. Passive sensing systems, which are capable of objective, continuous or semi-continuous, real-time data collection that requires no user input, may be a more effective and acceptable methodology with which to detect in real-time risk of maladaptive eating behavior. Passive sensing systems not only reduce participant burden and eliminate self-report bias by circumventing user input, but they also allow for more frequent data collection (e.g., continuous or semi-continuous), which may result in better detection of risk factors and therefore more accurate and timelier interventions.
+
+Moreover, increasing psychophysiological evidence indicates that negative affect, emotional reactivity, and emotion regulation can be passively sensed using physiological markers of autonomic nervous system activity [@RN177; @RN173]. Heart rate variability (HRV), in particular, has been identified as a transdiagnostic bio-signal for self-regulation, and more specifically, emotion regulation [@RN171; @RN172]. For example, higher levels of resting HRV have been found to be associated with increased trait-level emotion regulatory abilities, and lower levels of HRV with impairments in emotional coping and adaptive emotional response [@RN177; @RN174; @RN180]. In addition to providing trait-level information, HRV operates at the state level; for example, momentary increases in HRV correspond with effective emotion regulation across various laboratory tasks [@RN182; @RN181; @Smith2011MattersOT]. As such, within-person variability of HRV allows researchers to investigate whether decreases in HRV correspond with momentary emotion dysregulation, and subsequently, whether these within-person changes in HRV could place individuals at risk for engagement in maladaptive behaviors to externally regulate emotion. For example, a recent study examining adolescent girls with disordered eating behavior found reductions in HRV preceded loss-of-control eating episodes, suggesting that HRV may serve as a biomarker for decreased emotion regulatory activity and consequently, susceptibility to loss-of-control eating [@ranzenhofer2016].
+
+Nevertheless, most extant research studying the relation between HRV and emotion regulation has been conducted in laboratory settings, with HRV almost exclusively being measured by invasive or burdensome physiological sensors (e.g., medical-grade electrocardiogram monitors). The recent and rapid progression of wearable technology (e.g., wrist sensors) has opened a new wave of possibilities with which to acceptably and feasibly collect HRV data in ecologically-valid environments. One of the most promising current sensors is the commercially available Empatica E4 wristband, which has been validated for collecting momentary physiological data in real-world settings.[@RN191; @RN192] The Empatica E4 wrist sensor detects physiological signals using photoplethysmography (noninvasive optical measurement that can derive cardiovascular features from light absorption of the skin), skin conductance, and body temperature, and uploads data via a platform that can be viewable by study personnel for storage and analysis. Thus, given the newfound availability of validated wrist sensors like the Empatica E4, there is a critical need to translate primarily lab-based HRV findings into real-world environments using this more acceptable technology, which allows for real-time, ecologically-valid measurement and interventions.
+
+In the current study, our primary aim was to test whether changes in momentary HRV can be used to detect risk of experiencing an emotional eating episode. Emotional eating was selected as an outcome variable for the following reasons: 1) it is highly prevalent in the population and it occurs at a high frequency (usually multiple times per week) among individuals with clinically significant emotional eating, thus increasingly the feasibility of an initial study of wearable HRV technology in detecting risk for a maladaptive eating behavior and 2) by definition, negative emotion occurs prior to and during the eating episode itself, thereby optimizing our ability to detect a relationship between within–person changes in HRV and subsequent engagement in a maladaptive eating episodes. As such, emotional eating represented the most fitting outcome variable for this initial test, though we anticipate the relationship between emotion dysregulation and maladaptive eating could be applicable to other maladaptive eating behaviors more broadly. A secondary aim of this study is to evaluate the feasibility and acceptability of using wrist-worn wearable sensors to detect HRV in this population to determine whether a wearable HRV sensor could be a viable augmentation to an EMI-system in future studies.
+
+```{r child = "Methods_Results.Rmd"}
+
+```
+
+# Discussion
+
+In this preliminary examination of momentary HRV as a predictor of emotional eating, we found partial support for our hypothesis that a wrist-worn passive sensing system capturing HRV was able to predict risk of experiencing an emotional eating episode. Specifically, results found HRV domain features significantly differed in the 10-15 minutes preceding emotional eating episodes as compared to control episodes. However, no such differences were found in the time-domain features in time windows preceding control versus emotional eating episodes. In addition, two machine learning models were developed using time domain and frequency domain features, respectively, that each achieved moderately high classification accuracy, sensitivity, and specificity, although the model using frequency domain features achieved superior metrics. Within the machine learning model using frequency domain features, heart rate variability in the high frequency power band emerged as especially predictive features ($HF_2$, $HF_6$, and $HF_3$) suggesting a tendency of heart rate to change in the high-frequency power band in the moments preceding an emotional eating episode.
+
+\newpage
+
+# References
+```{r create_r-references}
+r_refs(file = "r-references.bib")
+```
+
+\begingroup
+\setlength{\parindent}{-0.5in}
+\setlength{\leftskip}{0.5in}
+
+<div id = "refs"></div>
+\endgroup

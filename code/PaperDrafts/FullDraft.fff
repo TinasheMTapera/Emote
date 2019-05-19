@@ -1,0 +1,81 @@
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/missingness-time-1.pdf}
+\caption{\label{fig:missingness-time}Completeness of Features in the Time Domain}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/missingness-freq-1.pdf}
+\caption{\label{fig:missingness-freq}Completeness of Features in the Frequency Domain}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/timeComparisonPlot-1.pdf}
+\caption{\label{fig:timeComparisonPlot}Between-Groups Permutation \emph{t}-test of Time Domain Features}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/freqComparisonPlotA-1.pdf}
+\caption{\label{fig:freqComparisonPlotA}Between-Groups Permutation \emph{t}-test of Frequency Domain Heart Rate Features}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/freqComparisonPlotD-1.pdf}
+\caption{\label{fig:freqComparisonPlotD}Between-Groups Permutation \emph{t}-test of Low Frequency-High Frequency Ratio Features}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/ml-metrics-1.pdf}
+\caption{\label{fig:ml-metrics}Machine Learning Evaluation Metrics}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/varImportance-time-1.pdf}
+\caption{\label{fig:varImportance-time}Pseudo-Feature Importance by Removing \& Perturbing Each Feature: Time Domain}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/varImportance-freq-1.pdf}
+\caption{\label{fig:varImportance-freq}Pseudo-Feature Importance by Removing \& Perturbing Each Feature: Frequency Domain}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+\centering
+\includegraphics{FullDraft_files/figure-latex/highfreq-timeseries-1.pdf}
+\caption{\label{fig:highfreq-timeseries}Time Series of High Frequency Band}
+\end{figure*}
+\efloatseparator
+ 
