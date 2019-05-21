@@ -2,15 +2,15 @@
 
 The following workbooks are available in the Emote directory:
 
-Old Files Directory:
+`Old Files` Directory:
 
 Old iterations of the models before we implemented our own versions of `RHRV`. This directory doesn't contain very useful workbooks but is there for consistency.
 
-DataOutputs Directory:
+`DataOutputs` Directory:
 
 This directory contains the datafiles that we output at various stages of the pipeline. Note that there is **no raw data** in this folder; all of the files are comma-separated files of outputs from the pipeline. The version with the most recent iterations of the pipeline is `data_out_20181113.csv` and should be used from here moving forward for all IBI analysis.
 
-Workbooks Directory:
+`Workbooks` Directory:
 
 This directory documents the notebooks of our work in R. The most important files are:
 
@@ -23,7 +23,7 @@ In `PipelineDemo`, this file walks you through how we read in data, how we modif
 * FrequencyDomainML26112018.Rmd shows the most recent development of machine learning for the frequency domain
 * Slimmed_models.Rmd shows the most recent development of machine learning for the time domain
 
-EDA_Analysis Directory:
+`EDA_Analysis` Directory:
 
 This directory contains documents for the current EDA efforts:
 
