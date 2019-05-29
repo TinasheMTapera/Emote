@@ -25,6 +25,7 @@ suppressPackageStartupMessages(
     library(e1071, quietly = TRUE)
     library(ModelMetrics, quietly = TRUE)
     library(scales, quietly = TRUE)
+    library(ggcorrplot, quietly = TRUE)
   }
 )
 
@@ -504,16 +505,16 @@ perturb_model_fit <- function(data){
   # fit the model on the training set
   invisible(capture.output(fit <- train(Y ~ ., data = train, method="svmPoly", trControl = trainControl(classProbs = TRUE))))
   # get these fitted probabilities
-  y = predict(fit, newdata = select(train, -Y), type = "prob") %>%
+  y = predict(fit, newdata = select(test, -Y), type = "prob") %>%
     rownames_to_column()
   
   # perturb a column from the training set and get the new probabilities
   result <- list(Control = y)
   
-  for(c in 2:ncol(train)){
+  for(c in 2:ncol(test)){
     
     col <- names(train)[c]
-    temp <- train
+    temp <- test
     temp[, col] <- temp[, col] + 1
     result[[col]] <- predict(fit, newdata = select(temp, -Y), type = "prob") %>%
       rownames_to_column()
@@ -526,7 +527,7 @@ perturb_model_fit <- function(data){
     select(-Control) %>% 
     spread(key = "Perturbed_Feature", value = Episode) %>%
     as_tibble() %>%
-    bind_cols(Y = train$Y)
+    bind_cols(Y = test$Y)
   
   return(bound)
   
@@ -661,7 +662,7 @@ auc_time <- auc_comparison_time %>%
 
 ```{r perturbations-time, warning = FALSE, message = FALSE, cache = TRUE}
 ### Compute time domain perturbation comparison
-
+ 
 set.seed(9)
 nfolds <- 4
 subdata<-createFolds(df_time_ml$Y, nfolds)
@@ -731,7 +732,7 @@ auc_freq <- auc_comparison_freq %>%
 
 ```{r perturbations-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE}
 ### frequency domain perturbation comparison
-
+ 
 set.seed(9)
 nfolds <- 4
 subdata<-createFolds(df_freq_ml$Y, nfolds)
@@ -921,6 +922,39 @@ df_freq_ml %>%
 The visualisation shows that at the second window, $HF_2$, there is an inverse relationship between the trajectories of episodes and controls, which may represent the high variable importance of $HF_2$. $HF_6$ shows a similar inverse trend, as increasing values of this variable are associated with episodes while decreasing values are associated with controls.
 
 
+(ref:corrplot-time) Correlation Matrix of Time Domain Features
+
+
+(ref:corrplot-freq) Correlation Matrix of Time Domain Features
+
+
+Additionally, a correlation matrix is added to address how features may interact in Figures \@ref(fig:corrplot-time) and \@ref(fig:corrplot-freq).
+
+```{r corrplot-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:corrplot-time)'}
+df_time_ml %>%
+  select(-Y) %>%
+  cor() %>%
+  round(3) %>%
+  ggcorrplot(type = 'lower', outline.color = "white") +
+  geom_text(aes(label = value)) +
+  scale_fill_viridis_c(name = "Correlation Coefficient") +
+  theme(
+    text = element_text(size=15, family = "Times")
+    )
+```
+
+```{r corrplot-freq, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:corrplot-freq)'}
+df_freq_ml %>%
+  select(-Y) %>%
+  cor() %>%
+  round(2) %>%
+  ggcorrplot(type = 'lower', outline.color = "white") +
+  geom_text(aes(label = value)) +
+  scale_fill_viridis_c(name = "Correlation Coefficient") +
+  theme(
+    text = element_text(size=15, family = "Times")
+    )
+```
 
 # Discussion
 
