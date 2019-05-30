@@ -831,6 +831,7 @@ time_domain_deltas %>%
     Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
     Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
   ) %>%
+  filter(Reduction_AUC > 0.2 & variable != "SDSD") %>%
   select(-variable) %>%
   ggplot(aes(x = Feature, y = Reduction_AUC))+
     geom_segment(
@@ -870,6 +871,7 @@ freq_domain_deltas %>%
     Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
     Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
   ) %>%
+  filter(Reduction_AUC > 0.2) %>%
   select(-variable) %>%
   ggplot(aes(x = Feature, y = Reduction_AUC))+
     geom_segment(
@@ -931,8 +933,21 @@ The visualisation shows that at the second window, $HF_2$, there is an inverse r
 Additionally, a correlation matrix is added to address how features may interact in Figures \@ref(fig:corrplot-time) and \@ref(fig:corrplot-freq).
 
 ```{r corrplot-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:corrplot-time)'}
+time_features <- time_domain_deltas %>% 
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_time, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  filter(Reduction_AUC > 0.2 & variable != "SDSD") %>%
+  select(variable) %>%
+  pull()
+
 df_time_ml %>%
-  select(-Y) %>%
+  select(time_features) %>%
   cor() %>%
   round(3) %>%
   ggcorrplot(type = 'lower', outline.color = "white") +
@@ -944,8 +959,21 @@ df_time_ml %>%
 ```
 
 ```{r corrplot-freq, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:corrplot-freq)'}
+frequency_features <- freq_domain_deltas %>% 
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_freq, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  filter(Reduction_AUC > 0.2) %>%
+  select(variable) %>%
+  pull()
+
 df_freq_ml %>%
-  select(-Y) %>%
+  select(frequency_features) %>%
   cor() %>%
   round(2) %>%
   ggcorrplot(type = 'lower', outline.color = "white") +

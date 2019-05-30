@@ -1,5 +1,4 @@
-## ----packages and setup, include=FALSE, warning=FALSE--------------------
-knitr::opts_chunk$set(fig.width=9, fig.height=6) 
+## ----packages and setup--------------------------------------------------
 suppressPackageStartupMessages(
   {
     library(tidyverse, quietly = TRUE)
@@ -16,9 +15,11 @@ suppressPackageStartupMessages(
     library(e1071, quietly = TRUE)
     library(ModelMetrics, quietly = TRUE)
     library(scales, quietly = TRUE)
+    library(ggcorrplot, quietly = TRUE)
   }
 )
 
+### This function is used to format a p value and return an APA valid string with threshold of 0.05  
 p_format <- function(vec, thresh = 0.05, star1 = 0.05, star2 = 0.01, star3 = 0.001){
   
   vec2 = NULL
@@ -38,8 +39,10 @@ p_format <- function(vec, thresh = 0.05, star1 = 0.05, star2 = 0.01, star3 = 0.0
   vec2
 }
 
+### This function is used to plot the results of the permutation-t tests
+### It uses the ggsignif package to add bridges between groups and p values
 permutation_plot <- function(df, height = 1.2, tip = 0.1){
-  
+    
   n <- df %>%
     rowid_to_column() %>%
     group_by(variable) %>%
@@ -69,7 +72,7 @@ permutation_plot <- function(df, height = 1.2, tip = 0.1){
 set.seed(1342)
 
 
-## ----load data, include=FALSE, warning=FALSE, message=FALSE--------------
+## ----load data, include=TRUE, warning=FALSE, message=FALSE---------------
 # all initial surveys
 all_surveys <- read_csv(here('data','Preprocessing_data_outputs', 'UpdatedSurveys_180713.csv')) %>%
   filter(complete.cases(.)) %>%
@@ -82,7 +85,7 @@ df_freq <- read_csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_ou
 df_time <- read_csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_out.csv'))
 
 
-## ----source-missingness, echo = FALSE------------------------------------
+## ----source-missingness--------------------------------------------------
 df_time_nrow <- df_time %>% 
   # use params threshold = 250, windows = 2
   filter(threshold == 250 & winds == 2) %>%
@@ -102,7 +105,7 @@ df_freq_nrow <- df_freq %>%
   count()
 
 
-## ----missingness-time, echo = FALSE, fig.cap='(ref:missingness-time)'----
+## ----missingness-time, fig.cap='(ref:missingness-time)'------------------
 df_time %>% 
   # use params threshold = 250, windows = 2
   filter(threshold == 250 & winds == 2) %>%
@@ -116,7 +119,7 @@ df_time %>%
     )
 
 
-## ----missingness-freq, fig.cap='(ref:missingness-freq)', echo = FALSE----
+## ----missingness-freq, fig.cap='(ref:missingness-freq)'------------------
 df_freq %>% 
   # use params threshold = 100, windows = 2
   filter(threshold == 100 & winds == 2) %>%
@@ -131,7 +134,9 @@ df_freq %>%
     )
 
 
-## ----missingness-tab, echo = FALSE, warning = FALSE, message = FALSE, results='asis'----
+## ----missingness-tab, warning = FALSE, message = FALSE, results='asis'----
+### Below, gather the NA in frequency and time domain and tabulate
+
 missingnesstable_time <- df_time %>% 
   # use params threshold = 250, windows = 2
   filter(threshold == 250 & winds == 2) %>%
@@ -174,7 +179,9 @@ bind_rows(missingnesstable_time, missingnesstable_freq)%>%
   kableExtra::group_rows("LF-HF Ratio", 27, 32)
 
 
-## ----source-tests, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+## ----source-tests, warning = FALSE, message = FALSE, cache = TRUE--------
+### Run Permutation T-tests
+
 df_time_summaries <- df_time %>% 
   # use params threshold = 250, windows = 2
   filter(threshold == 250 & winds == 2) %>%
@@ -262,8 +269,8 @@ df_freq_summaries <- df_freq %>%
 
 
 
-## ----timeSummary, echo = FALSE, warning = FALSE, message = FALSE, results='asis'----
-
+## ----timeSummary, warning = FALSE, message = FALSE, results='asis'-------
+### Tabulate the time domain means
 df_time_summaries %>%
   filter(statistic != "p.val") %>%
   filter(!str_detect(statistic, "control|episode")) %>%
@@ -274,7 +281,9 @@ df_time_summaries %>%
   
 
 
-## ----timeComparison, echo = FALSE, warning = FALSE, message = FALSE------
+## ----timeComparison, warning = FALSE, message = FALSE--------------------
+### Tabulate the results of time domain permutation t tests
+
 df_time_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
   spread(key = statistic, value = value) %>%
@@ -283,7 +292,7 @@ df_time_summaries %>%
   kable_styling()
 
 
-## ----timeComparisonPlot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:timeComparisonPlot)'----
+## ----timeComparisonPlot, warning = FALSE, message = FALSE, fig.cap = '(ref:timeComparisonPlot)'----
 df_time_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
   spread(key = statistic, value = value) %>%
@@ -293,7 +302,8 @@ df_time_summaries %>%
     labs(caption = expression(~italic(p)~"-values for permutation "~italic(t)~"-test with 10,000 permutations shown"))
 
 
-## ----freqSummary, echo = FALSE, warning = FALSE, message = FALSE---------
+## ----freqSummary, warning = FALSE, message = FALSE-----------------------
+### tabulate the frequency domain means
 order = c("Avg_HR", "Avg_niHR", "Start_niHR", "End_niHR",
           paste0("HF_", 1:6),
           paste0("LF_", 1:6),
@@ -312,7 +322,8 @@ df_freq_summaries %>%
   kableExtra::group_rows("LF-HF Ratio", 17, 22)
 
 
-## ----freqComparison, echo = FALSE, warning = FALSE, message = FALSE------
+## ----freqComparison, warning = FALSE, message = FALSE--------------------
+### tabulate the results of the frequency domain permutation t test
 df_freq_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
   spread(key = statistic, value = value) %>%
@@ -326,7 +337,7 @@ df_freq_summaries %>%
   kableExtra::group_rows("LF-HF Ratio", 17, 22)
 
 
-## ----freqComparisonPlot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlot)'----
+## ----freqComparisonPlot, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlot)'----
 
 faceted <- df_freq_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
@@ -349,7 +360,8 @@ plots <- pmap(list(df = faceted$data,
 #ggpubr::ggarrange(plotlist = plots, common.legend = T, font.label = list(face = 'bold', family = 'Times'), labels = paste0(letters[1:4], ")"))
 
 
-## ----freqComparisonPlotA, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotA)'----
+## ----freqComparisonPlotA, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotA)'----
+## plot frequency domain significant vars (heart rate)
 df_freq_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
   spread(key = statistic, value = value) %>%
@@ -369,7 +381,9 @@ df_freq_summaries %>%
 
 
 
-## ----freqComparisonPlotD, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotD)'----
+## ----freqComparisonPlotD, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotD)'----
+## plot frequency domain significant vars (lfhf ratio)
+
 df_freq_summaries %>%
   filter(str_detect(statistic, "control|episode|p.val")) %>%
   spread(key = statistic, value = value) %>%
@@ -389,7 +403,10 @@ df_freq_summaries %>%
 
 
 
-## ----ml-functions, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+## ----ml-functions, warning = FALSE, message = FALSE, cache = TRUE--------
+### Define Functions for ML
+
+### Main SVM model fitting function
 modelfit <- function(data){
   
   train <- data$train
@@ -400,7 +417,7 @@ modelfit <- function(data){
   # predict on the test set
   yhat = predict(fit, newdata = select(test, -Y))
   
-  # evaluate test accuracy
+  # evaluate test set accuracy
   conf <- caret::confusionMatrix(yhat, test$Y)
   result <- c(conf$overall[1], conf$byClass[1:2]) #<-can change threshold if you want
   result["auc"] <- auc(test$Y, yhat)
@@ -409,6 +426,7 @@ modelfit <- function(data){
   
 }
 
+### Fit an SVM and perturb one column at a time
 perturb_model_fit <- function(data){
   
   train <- data$train
@@ -417,34 +435,35 @@ perturb_model_fit <- function(data){
   # fit the model on the training set
   invisible(capture.output(fit <- train(Y ~ ., data = train, method="svmPoly", trControl = trainControl(classProbs = TRUE))))
   # get these fitted probabilities
-  y = predict(fit, newdata = select(train, -Y), type = "prob") %>%
+  y = predict(fit, newdata = select(test, -Y), type = "prob") %>%
     rownames_to_column()
   
   # perturb a column from the training set and get the new probabilities
   result <- list(Control = y)
   
-  for(c in 2:ncol(train)){
+  for(c in 2:ncol(test)){
     
     col <- names(train)[c]
-    temp <- train
+    temp <- test
     temp[, col] <- temp[, col] + 1
     result[[col]] <- predict(fit, newdata = select(temp, -Y), type = "prob") %>%
       rownames_to_column()
     
   }
   
-  # tidy
+  # tidy the results before returning
   bound <- bind_rows(result, .id='Perturbed_Feature') %>%
     mutate(rowname = as.numeric(rowname)) %>%
     select(-Control) %>% 
     spread(key = "Perturbed_Feature", value = Episode) %>%
     as_tibble() %>%
-    bind_cols(Y = train$Y)
+    bind_cols(Y = test$Y)
   
   return(bound)
   
 }
 
+### Split a dataset into a train and test set
 train_test <- function(dataset, folder, print = FALSE){
   
   # issue here with namespace and "data" variable reference
@@ -478,11 +497,11 @@ train_test <- function(dataset, folder, print = FALSE){
   
 }
 
-# get variable importance by looping over the columns, leave-one-out for each model
+### Get variable importance by looping over the columns, leave-one-out for each model; uses main model fitting function
 leave_one_out_auc <- function(df, col){
   
   df_reduced <- df %>%
-    select(-!!col)
+    select(-!!col)      # remove this column
   set.seed(9)
   nfolds <- 4
   subdata <- createFolds(df_reduced$Y, nfolds)
@@ -504,7 +523,9 @@ leave_one_out_auc <- function(df, col){
 }
 
 
-## ----ml-datasets, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+## ----ml-datasets, warning = FALSE, message = FALSE, cache = TRUE---------
+# prep datasets
+
 df_time_ml <- read.csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_out.csv'))%>%
   # use params threshold = 250, windows = 2
   filter(threshold == 250 & winds == 2)%>%
@@ -537,7 +558,8 @@ df_freq_ml <- df_freq_ml %>%
   filter(complete.cases(.))
 
 
-## ----ml-time, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+## ----ml-time, warning = FALSE, message = FALSE, cache = TRUE-------------
+### Run time domain ML
 set.seed(9)
 nfolds <- 4
 subdata<-createFolds(df_time_ml$Y, nfolds)
@@ -552,7 +574,9 @@ t4_z <- train_test(df_time_ml, subdata$Fold4) %>%
 results_time <- colMeans(rbind(t1_z, t2_z, t3_z, t4_z))
 
 
-## ----auc-importance-time, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+## ----auc-importance-time, warning = FALSE, message = FALSE, cache = TRUE----
+### Compute time domain AUC comparison
+
 auc_comparison_time <- list()
 
 for(c in 2:ncol(df_time_ml)){
@@ -566,7 +590,9 @@ auc_time <- auc_comparison_time %>%
   arrange(-Reduction_AUC)
 
 
-## ----perturbations-time, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+## ----perturbations-time, warning = FALSE, message = FALSE, cache = TRUE----
+### Compute time domain perturbation comparison
+ 
 set.seed(9)
 nfolds <- 4
 subdata<-createFolds(df_time_ml$Y, nfolds)
@@ -601,7 +627,9 @@ perturbed_time_4 <- train_test(df_time_ml, subdata$Fold4) %>%     # split train 
 
 
 
-## ----ml-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+## ----ml-freq, warning = FALSE, message = FALSE, cache = TRUE-------------
+### ML frequency domain
+
 set.seed(9)
 nfolds <- 4
 subdata<-createFolds(df_freq_ml$Y, nfolds)
@@ -617,6 +645,8 @@ results_freq <- colMeans(rbind(f1_z, f2_z, f3_z, f4_z))
 
 
 ## ----auc-importance-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+### frequency domain AUC comparison
+
 auc_comparison_freq <- list()
 
 for(c in 2:ncol(df_freq_ml)){
@@ -631,6 +661,8 @@ auc_freq <- auc_comparison_freq %>%
 
 
 ## ----perturbations-freq, echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE----
+### frequency domain perturbation comparison
+ 
 set.seed(9)
 nfolds <- 4
 subdata<-createFolds(df_freq_ml$Y, nfolds)
@@ -666,24 +698,28 @@ perturbed_freq_4 <- train_test(df_freq_ml, subdata$Fold4) %>%     # split train 
 
 
 ## ----gather-importance, echo = FALSE, warning = FALSE, message = FALSE----
+## data munging to collate the results
 time_domain_deltas <- bind_rows(perturbed_time_1, perturbed_time_2, perturbed_time_3, perturbed_time_4) %>%
-  group_by(Y) %>%
   summarise_if(is.numeric, mean) %>%
   select(-rowname) %>%
-  select(Y, contains("_Delta")) %>%
-  gather("variable", "Delta_Probability", -Y) %>%
-  mutate(variable = str_replace(variable, pattern = "_Delta", replacement = ""))
+  t() %>% 
+  as.data.frame() %>%
+  rownames_to_column("variable") %>%
+  filter(str_detect(variable, "Delta")) %>%
+  transmute(variable = str_remove(variable, "_Delta"), Delta_Probability = V1)
 
 freq_domain_deltas <- bind_rows(perturbed_freq_1, perturbed_freq_2, perturbed_freq_3, perturbed_freq_4) %>%
-  group_by(Y) %>%
   summarise_if(is.numeric, mean) %>%
   select(-rowname) %>%
-  select(Y, contains("_Delta")) %>%
-  gather("variable", "Delta_Probability", -Y) %>%
-  mutate(variable = str_replace(variable, pattern = "_Delta", replacement = ""))
+  t() %>%
+  as.data.frame() %>%
+  rownames_to_column("variable") %>%
+  filter(str_detect(variable, "Delta")) %>%
+  transmute(variable = str_remove(variable, "_Delta"), Delta_Probability = V1)
 
 
 ## ----ml-metrics, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:ml-metrics)'----
+### plotting the ml results
 ml_time <- results_time %>%
   enframe(name = "Metric", value = "Value") %>%
   mutate(Metric = ifelse(Metric == "auc", "AUC", Metric),
@@ -704,15 +740,17 @@ bind_rows(ml_time, ml_freq) %>%
 
 
 ## ----varImportance-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-time)'----
+## plotting the time domain variable importance
 time_domain_deltas %>% 
-  group_by(variable) %>%
-  summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
   right_join(auc_time, by = "variable") %>%
   as_tibble() %>%
   mutate(
     Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
     Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
   ) %>%
+  filter(Reduction_AUC > 0.2 & variable != "SDSD") %>%
   select(-variable) %>%
   ggplot(aes(x = Feature, y = Reduction_AUC))+
     geom_segment(
@@ -739,15 +777,18 @@ time_domain_deltas %>%
 
 
 ## ----varImportance-freq, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-freq)'----
+## plotting the frequency domain variable importance
+
 freq_domain_deltas %>% 
-  group_by(variable) %>%
-  summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
   right_join(auc_freq, by = "variable") %>%
   as_tibble() %>%
   mutate(
     Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
     Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
   ) %>%
+  filter(Reduction_AUC > 0.2) %>%
   select(-variable) %>%
   ggplot(aes(x = Feature, y = Reduction_AUC))+
     geom_segment(
@@ -775,6 +816,8 @@ freq_domain_deltas %>%
 
 
 ## ----highfreq-timeseries, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:highfreq-timeseries)'----
+## plot the raw data for clarity
+
 df_freq_ml %>%
   gather('variable', 'value', HF_1:HF_6) %>%
   ggplot(aes(x=variable, y=value, colour=Y)) +
@@ -787,4 +830,56 @@ df_freq_ml %>%
         text = element_text(size=15, family = "Times")
     ) +
     scale_color_viridis_d()
+
+
+## ----corrplot-time, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:corrplot-time)'----
+time_features <- time_domain_deltas %>% 
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_time, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  filter(Reduction_AUC > 0.2 & variable != "SDSD") %>%
+  select(variable) %>%
+  pull()
+
+df_time_ml %>%
+  select(time_features) %>%
+  cor() %>%
+  round(3) %>%
+  ggcorrplot(type = 'lower', outline.color = "white") +
+  geom_text(aes(label = value)) +
+  scale_fill_viridis_c(name = "Correlation Coefficient") +
+  theme(
+    text = element_text(size=15, family = "Times")
+    )
+
+
+## ----corrplot-freq, echo = FALSE, warning = FALSE, message = FALSE, fig.cap = '(ref:corrplot-freq)'----
+frequency_features <- freq_domain_deltas %>% 
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_freq, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  filter(Reduction_AUC > 0.2) %>%
+  select(variable) %>%
+  pull()
+
+df_freq_ml %>%
+  select(frequency_features) %>%
+  cor() %>%
+  round(2) %>%
+  ggcorrplot(type = 'lower', outline.color = "white") +
+  geom_text(aes(label = value)) +
+  scale_fill_viridis_c(name = "Correlation Coefficient") +
+  theme(
+    text = element_text(size=15, family = "Times")
+    )
 
