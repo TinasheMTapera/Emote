@@ -4492,6 +4492,79 @@ f4_z <- train_test(df_freq_ml, subdata$Fold4) %>%
 results_freq <- colMeans(rbind(f1_z, f2_z, f3_z, f4_z))
 ```
 
+``` r
+### frequency domain AUC comparison
+
+auc_comparison_freq <- list()
+
+for(c in 2:ncol(df_freq_ml)){
+  auc_comparison_freq <- leave_one_out_auc(df_freq_ml, c) %>%
+    rbind(auc_comparison_freq)
+}
+
+auc_freq <- auc_comparison_freq %>%
+  mutate(Reduction_AUC = results_freq['auc'] - auc) %>%
+  mutate(Reduction_AUC = rescale(Reduction_AUC, c(0,1))) %>%
+  arrange(-Reduction_AUC)
+```
+
+``` r
+### frequency domain perturbation comparison
+ 
+set.seed(9)
+nfolds <- 4
+subdata<-createFolds(df_freq_ml$Y, nfolds)
+
+perturbed_freq_1 <- train_test(df_freq_ml, subdata$Fold1) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+
+perturbed_freq_2 <- train_test(df_freq_ml, subdata$Fold2) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+
+perturbed_freq_3 <- train_test(df_freq_ml, subdata$Fold3) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+
+perturbed_freq_4 <- train_test(df_freq_ml, subdata$Fold4) %>%     # split train and test
+  perturb_model_fit() %>%                                   # fit model and perturb each column
+  mutate_at(                                                # tidy to get differences
+    .vars = vars(-rowname, -Y, -Control),
+    .funs = list(Delta = ~. - Control)) #%>%
+  #select(Y, contains("Delta"))
+```
+
+``` r
+## data munging to collate the results
+time_domain_deltas <- bind_rows(perturbed_time_1, perturbed_time_2, perturbed_time_3, perturbed_time_4) %>%
+  summarise_if(is.numeric, mean) %>%
+  select(-rowname) %>%
+  t() %>% 
+  as.data.frame() %>%
+  rownames_to_column("variable") %>%
+  filter(str_detect(variable, "Delta")) %>%
+  transmute(variable = str_remove(variable, "_Delta"), Delta_Probability = V1)
+
+freq_domain_deltas <- bind_rows(perturbed_freq_1, perturbed_freq_2, perturbed_freq_3, perturbed_freq_4) %>%
+  summarise_if(is.numeric, mean) %>%
+  select(-rowname) %>%
+  t() %>%
+  as.data.frame() %>%
+  rownames_to_column("variable") %>%
+  filter(str_detect(variable, "Delta")) %>%
+  transmute(variable = str_remove(variable, "_Delta"), Delta_Probability = V1)
+```
+
 (ref:ml-metrics) Machine Learning Evaluation Metrics
 
 Machine learning models were implemented using time domain and frequency
@@ -4504,6 +4577,27 @@ number of observations and controls. SVM models were fit iteratively
 using 3/4’s of the data, and evaluated on the remaining 1/4. Figure
 @ref(fig:ml-metrics) shows the mean accuracy, sensitivity, and
 specificity of the SVM across these four folds.
+
+``` r
+### plotting the ml results
+ml_time <- results_time %>%
+  enframe(name = "Metric", value = "Value") %>%
+  mutate(Metric = ifelse(Metric == "auc", "AUC", Metric),
+         Domain = "Time")
+
+ml_freq <- results_freq %>%
+  enframe(name = "Metric", value = "Value") %>%
+  mutate(Metric = ifelse(Metric == "auc", "AUC", Metric),
+         Domain = "Frequency")
+
+bind_rows(ml_time, ml_freq) %>%
+  ggplot(aes(x=Metric, y=Value, fill=Domain))+
+  geom_col(position = "dodge") +
+  geom_text(aes(label=formatC(Value, 2), y = Value + 0.025), position = position_dodge(width=0.9), vjust=-0.25, family = "Times") +
+  theme_minimal() +
+  scale_fill_viridis_d() +
+  theme(text = element_text(size=15, family = "Times"))
+```
 
 ![(ref:ml-metrics)](Methods_Results_files/figure-gfm/ml-metrics-1.png)
 
@@ -4527,6 +4621,43 @@ decreased the likelihood of an eating episode. Figures
 @ref(fig:varImportance-time) and @ref(fig:varImportance-freq) show the
 results of this analysis.
 
+``` r
+## plotting the time domain variable importance
+time_domain_deltas %>% 
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_time, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  filter(Reduction_AUC > 0.2 & variable != "SDSD") %>%
+  select(-variable) %>%
+  ggplot(aes(x = Feature, y = Reduction_AUC))+
+    geom_segment(
+      aes(
+        y = 0,
+        x = Feature, 
+        yend = Reduction_AUC, 
+        xend = Feature
+      ), 
+      color = "black"
+    ) +
+    geom_point(aes(colour = Delta_Probability), size = 8) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      text = element_text(size=15, family = "Times"),
+      legend.position = "bottom"
+    ) +
+    labs(
+      x = "Feature",
+      y = "Decrease in Model AUC When Feature Removed"
+    ) +
+  scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Perturbed")
+```
+
 ![(ref:varImportance-time)](Methods_Results_files/figure-gfm/varImportance-time-1.png)
 
 In the time domain, the most important feature by measure of scaled
@@ -4537,6 +4668,45 @@ higher levels of *SDANN* decrease the likelihood of an eating episode.
 This same inference can be made of *MADRR*. In the case of *SDNN*, a 1
 unit increase in values of this feature increased the probability of
 observations being predicted as episodes.
+
+``` r
+## plotting the frequency domain variable importance
+
+freq_domain_deltas %>% 
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_freq, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  filter(Reduction_AUC > 0.2) %>%
+  select(-variable) %>%
+  ggplot(aes(x = Feature, y = Reduction_AUC))+
+    geom_segment(
+      aes(
+        y = 0,
+        x = Feature, 
+        yend = Reduction_AUC, 
+        xend = Feature
+      ), 
+      color = "black"
+    ) +
+    geom_point(aes(colour = Delta_Probability), size = 8) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      text = element_text(size=15, family = "Times"),
+      legend.position = "bottom"
+    ) +
+    #facet_grid(Y~.) +
+    labs(
+      x = "Feature",
+      y = "Decrease in Model AUC When Feature Removed"
+    ) +
+  scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Perturbed")
+```
 
 ![(ref:varImportance-freq)](Methods_Results_files/figure-gfm/varImportance-freq-1.png)
 
@@ -4560,6 +4730,23 @@ To better interpret how the signal in the high frequency band of heart
 rate varies through the 30-minute window, we plot these values in Figure
 @ref(fig:highfreq-timeseries).
 
+``` r
+## plot the raw data for clarity
+
+df_freq_ml %>%
+  gather('variable', 'value', HF_1:HF_6) %>%
+  ggplot(aes(x=variable, y=value, colour=Y)) +
+    geom_jitter(alpha = 0.6, width = 0.15) +
+    stat_smooth(aes(group = Y), method = "loess") +
+    labs(x = "Frequency Band Window", y = "Z-Value") +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        text = element_text(size=15, family = "Times")
+    ) +
+    scale_color_viridis_d()
+```
+
 ![(ref:highfreq-timeseries)](Methods_Results_files/figure-gfm/highfreq-timeseries-1.png)
 
 The visualisation shows that at the second window, \(HF_2\), there is an
@@ -4576,9 +4763,122 @@ controls.
 Additionally, a correlation matrix is added to address how features may
 interact in Figures @ref(fig:corrplot-time) and @ref(fig:corrplot-freq).
 
+``` r
+time_features <- time_domain_deltas %>% 
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_time, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  filter(Reduction_AUC > 0.2 & variable != "SDSD") %>%
+  select(variable) %>%
+  pull()
+
+p_mat <- df_time_ml %>%
+  select(time_features) %>%
+  cor_pmat() %>%
+  as_tibble(rownames = 'id') %>%
+  mutate_at(vars(-id), funs(case_when(. >= 0.05 ~ "NS", . < 0.05 ~ "S"))) %>%
+  column_to_rownames('id') %>%
+  as.matrix() %>%
+  {
+    .[upper.tri(.)] <- NA
+    .
+  } %>%
+  reshape2::melt(value.name = "p_val")
+
+df_time_ml %>%
+  select(time_features) %>%
+  cor() %>%
+  round(3) %>%
+  {
+    .[upper.tri(.)] <- NA
+    .
+  } %>%
+  reshape2::melt() %>%
+  left_join(p_mat) %>%
+  #ggcorrplot(type = 'lower', outline.color = "white") +
+  ggplot(aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = p_val)) +
+  scale_fill_viridis_c(name = "Correlation Coefficient", na.value = 'white') +
+  theme_minimal() +
+  theme(
+    text = element_text(size=15, family = "Times"),
+    axis.text.x = element_text(angle = 90, hjust = 1)
+    ) +
+  labs(caption = "S: Significant Correlation\nNS: Non-Significant Correlation")
+```
+
 ![(ref:corrplot-time)](Methods_Results_files/figure-gfm/corrplot-time-1.png)
 
+``` r
+  NULL
+```
+
+    ## NULL
+
+``` r
+frequency_features <- freq_domain_deltas %>% 
+  #group_by(variable) %>%
+  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
+  right_join(auc_freq, by = "variable") %>%
+  as_tibble() %>%
+  mutate(
+    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
+    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
+  ) %>%
+  filter(Reduction_AUC > 0.2) %>%
+  select(variable) %>%
+  pull()
+
+p_mat <- df_freq_ml %>%
+  select(frequency_features) %>%
+  cor_pmat() %>%
+  as_tibble(rownames = 'id') %>%
+  mutate_at(vars(-id), funs(case_when(. >= 0.05 ~ "NS", . < 0.05 ~ "S"))) %>%
+  column_to_rownames('id') %>%
+  as.matrix() %>%
+  {
+    .[upper.tri(.)] <- NA
+    .
+  } %>%
+  reshape2::melt(value.name = "p_val")
+
+
+df_freq_ml %>%
+  select(frequency_features) %>%
+  cor() %>%
+    round(3) %>%
+  {
+    .[upper.tri(.)] <- NA
+    .
+  } %>%
+  reshape2::melt() %>%
+  left_join(p_mat) %>%
+  #ggcorrplot(type = 'lower', outline.color = "white") +
+  ggplot(aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = p_val)) +
+  scale_fill_viridis_c(name = "Correlation Coefficient", na.value = 'white') +
+  theme_minimal() +
+  theme(
+    text = element_text(size=15, family = "Times"),
+    axis.text.x = element_text(angle = 90, hjust = 1)
+    ) +
+  labs(caption = "S: Significant Correlation\nNS: Non-Significant Correlation")
+```
+
 ![(ref:corrplot-freq)](Methods_Results_files/figure-gfm/corrplot-freq-1.png)
+
+``` r
+  NULL
+```
+
+    ## NULL
 
 # Discussion
 
