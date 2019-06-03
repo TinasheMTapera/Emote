@@ -4726,6 +4726,8 @@ for this model.
 
 (ref:highfreq-timeseries) Time Series of High Frequency Band
 
+(ref:lowfreq-timeseries) Time Series of Low Frequency Band
+
 To better interpret how the signal in the high frequency band of heart
 rate varies through the 30-minute window, we plot these values in Figure
 @ref(fig:highfreq-timeseries).
@@ -4735,9 +4737,11 @@ rate varies through the 30-minute window, we plot these values in Figure
 
 df_freq_ml %>%
   gather('variable', 'value', HF_1:HF_6) %>%
+  #mutate(facet = ifelse(str_detect(variable, 'HF'), "HF", "LF")) %>%
   ggplot(aes(x=variable, y=value, colour=Y)) +
     geom_jitter(alpha = 0.6, width = 0.15) +
     stat_smooth(aes(group = Y), method = "loess") +
+    #facet_wrap(facet~.) +
     labs(x = "Frequency Band Window", y = "Z-Value") +
     theme_minimal() +
     theme(
@@ -4755,6 +4759,27 @@ which may represent the high variable importance of \(HF_2\). \(HF_6\)
 shows a similar inverse trend, as increasing values of this variable are
 associated with episodes while decreasing values are associated with
 controls.
+
+``` r
+## plot the raw data for clarity
+
+df_freq_ml %>%
+  gather('variable', 'value', LF_1:LF_6) %>%
+  #mutate(facet = ifelse(str_detect(variable, 'HF'), "HF", "LF")) %>%
+  ggplot(aes(x=variable, y=value, colour=Y)) +
+    geom_jitter(alpha = 0.6, width = 0.15) +
+    stat_smooth(aes(group = Y), method = "loess") +
+    #facet_wrap(facet~.) +
+    labs(x = "Frequency Band Window", y = "Z-Value") +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        text = element_text(size=15, family = "Times")
+    ) +
+    scale_color_viridis_d()
+```
+
+![(ref:lowfreq-timeseries)](Methods_Results_files/figure-gfm/lowfreq-timeseries-1.png)
 
 (ref:corrplot-time) Correlation Matrix of Time Domain Features
 
