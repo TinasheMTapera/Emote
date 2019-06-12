@@ -1,11 +1,11 @@
 ---
 title: "Methods & Results Section"
 output:
-  html_document:
-    self_contained: true
-    toc: true
   github_document:
     html_preview: true
+    toc: true
+  html_document:
+    self_contained: true
     toc: true
 bibliography: citations.bib
 always_allow_html: yes
@@ -108,11 +108,11 @@ The following heart rate variability features were extracted from the IBI stream
   
 In the frequency domain, features extracted included the mean non-interpolated heart rate (*mean niHR*), the mean interpolated Heart Rate (*mean HR*), and the heart rate values at the start and end of the 30 minute window (*Start HR*, *End HR*). Additional frequency domain features were extracted from the 30 minute streams by applying a Fourier transform to the heart rate signal, resulting in a spectrogram of the heart rate in the low and high frequency ranges. To extract a sufficient amount of information from these spectograms and increase the variance of our data, the spectrogram was split into 5 minute windows, as has been done previously in studies using heart rate variability to predict event-level behavior [@Rubin:2016:TFC:3021319.3021332]. Mean features were extracted from each of these windows — the mean Low Frequency signal ($LF_1$, $LF_2$,… $LF_6$), the mean High Frequency signal ($HF_1$, $HF_2$,… $HF_6$), and the mean Low Frequency-High Frequency Ratio ($LFHF_1$, $LFHF_2$,… $LFHF_6$).
   
-In order to examine any differences between means of the features, and address the issue of group imbalance affecting statistical power, we conducted between-groups permutation T-tests with each variable in the time and frequency domain [@R-DAAG; @good2013permutation]. Then, using the CARET package [@R-caret], a Support Vector Machine with a polynomial kernel was implemented to predict episodes from controls. In order to address the group imbalance in this stage, all features were standardized, while controls were randomly downsampled and episodes were randomly upsampled using the ROSE package [@R-ROSE]. To evaluate model performance, models were tested using 4-fold cross validation, training models on 3/4 of the data and using the remaining data evaluate the model accuracy, specificity, and sensitivity.
+Using machine learning, we attempted to classify eating episodes and controls using these two sets of features separately. Using the CARET package [@R-caret], a Support Vector Machine (SVM) with a polynomial kernel was implemented to predict episodes apart from controls. All features were standardized within-subject, and in order to address the group imbalance in this stage, controls were randomly downsampled and episodes were randomly upsampled using the ROSE package [@R-ROSE]. To evaluate model performance, models were tested using 4-fold cross validation, training models on 3/4 of training data and using the remaining 1/4 of testing data to evaluate model accuracy, specificity, and sensitivity. Additionally, we emply two strategies to assess variable importance. The first is to iteratively remove each feature, and then fit and evaluate the SVM to this reduced dataset; we then compare how removing each variable from the model affects the achieved Area Under the Curve (AUC) in the procedure. The second is to iteratively perturb each feature by one standard unit, and then fit and evaluate the SVM in a similar manner, this time comparing how perturbing the data in each feature influences the predicted probabilities of data belonging to the "episode" class.
   
 # Results
 
-## Missingness.
+## The Dataset.
 ```{r source-missingness}
 df_time_nrow <- df_time %>% 
   # use params threshold = 250, windows = 2
@@ -174,52 +174,6 @@ df_freq %>%
     )
 ```
 
-```{r missingness-tab, warning = FALSE, message = FALSE, results='asis'}
-### Below, gather the NA in frequency and time domain and tabulate
-
-missingnesstable_time <- df_time %>% 
-  # use params threshold = 250, windows = 2
-  filter(threshold == 250 & winds == 2) %>%
-  # remove high stress controls
-  filter(!(Stress >= 5 & Y == "Control")) %>%
-  select(-c(winds, threshold, index, when, Event, Stress, ID), Y, SDNN:HRVi) %>%
-  group_by(Y) %>%
-  summarise_all(funs(sum(!is.na(.)))) %>%
-  t()
-
-colnames(missingnesstable_time) <- missingnesstable_time[1,]
-missingnesstable_time <- missingnesstable_time[-1,] %>%
-  data.frame() %>%
-  rownames_to_column(var = "Variable")
-
-missingnesstable_freq <- df_freq %>% 
-  # use params threshold = 250, windows = 2
-  filter(threshold == 100 & winds == 2) %>%
-  # remove high stress controls
-  filter(!(Stress >= 5 & Y == "Control")) %>%
-  # select frequency domain
-  select(-c(winds, threshold, index, when, Event, Stress, ID)) %>%
-  select(Y, Avg_niHR:LFHF_6) %>%
-  group_by(Y) %>%
-  summarise_all(funs(sum(!is.na(.)))) %>%
-  t()
-
-colnames(missingnesstable_freq) <- missingnesstable_freq[1,]
-missingnesstable_freq <- missingnesstable_freq[-1,] %>%
-  data.frame() %>%
-  rownames_to_column(var = "Variable")
-
-bind_rows(missingnesstable_time, missingnesstable_freq)%>%
-  kable(caption = '(ref:missingness-tab)') %>%
-  kable_styling() %>%
-  kableExtra::group_rows("Heart Rate Variability", 1, 10) %>%
-  kableExtra::group_rows("Heart Rate", 11, 14) %>%
-  kableExtra::group_rows("High Frequency", 15, 20) %>%
-  kableExtra::group_rows("Low Frequency", 21, 26) %>%
-  kableExtra::group_rows("LF-HF Ratio", 27, 32)
-```
-
-## Comparison using Episodes and Controls using t-tests.
 
 ```{r source-tests, warning = FALSE, message = FALSE, cache = TRUE}
 ### Run Permutation T-tests
@@ -313,7 +267,9 @@ df_freq_summaries <- df_freq %>%
 
 (ref:timeSummary) Summary of Features in the Time Domain
 
-The mean values for each time-domain feature are shown in Table \@ref(tab:timeSummary).
+(ref:freqSummary) Summary of Features in the Frequency Domain
+
+The mean values for each time-domain feature are shown in Table \@ref(tab:timeSummary), while the mean values for each frequency feature are shown in Table \@ref(tab:freqSummary).
 
 ```{r timeSummary, warning = FALSE, message = FALSE, results='asis'}
 ### Tabulate the time domain means
@@ -322,49 +278,16 @@ df_time_summaries %>%
   filter(!str_detect(statistic, "control|episode")) %>%
   spread(key = statistic, value = value) %>%
   select(variable, n, mean, sd) %>% 
-  kable(caption = '(ref:timeSummary)') %>%
+  kable(digits=2, caption = '(ref:timeSummary)') %>%
   kable_styling()
   
 ```
-
-Using a Two *t* permutation test run between episodes and controls, none of the time-domain variables were found to be significantly different, shown in Table \@ref(tab:timeComparison).
-
-(ref:timeComparison) Between-Groups Permutation *t*-test of Time Domain Features
-
-(ref:timeComparisonPlot) Between-Groups Permutation *t*-test of Time Domain Features
-
-
-```{r timeComparison, warning = FALSE, message = FALSE}
-### Tabulate the results of time domain permutation t tests
-
-df_time_summaries %>%
-  filter(str_detect(statistic, "control|episode|p.val")) %>%
-  spread(key = statistic, value = value) %>%
-  select(-p.val, everything()) %>%
-  kable(digits=2, caption = '(ref:timeComparison)') %>%
-  kable_styling()
-```
-
-```{r timeComparisonPlot, warning = FALSE, message = FALSE, fig.cap = '(ref:timeComparisonPlot)'}
-df_time_summaries %>%
-  filter(str_detect(statistic, "control|episode|p.val")) %>%
-  spread(key = statistic, value = value) %>%
-  select(-p.val, everything()) %>%
-  gather("Group", "Mean", mean.control:mean.episode) %>%
-  permutation_plot(., tip = 0.01)+
-    labs(caption = expression(~italic(p)~"-values for permutation "~italic(t)~"-test with 10,000 permutations shown"))
-```
-
-(ref:freqSummary) Summary of Features in the Frequency Domain
-
-A similar approach was taken to analyze the frequency domain. Table \@ref(tab:freqSummary) outlines the mean values of features.
 
 ```{r freqSummary, warning = FALSE, message = FALSE}
 ### tabulate the frequency domain means
 order = c("Avg_HR", "Avg_niHR", "Start_niHR", "End_niHR",
           paste0("HF_", 1:6),
-          paste0("LF_", 1:6),
-          paste0("LFHF_", 1:6))
+          paste0("LF_", 1:6))
 df_freq_summaries %>%
   filter(statistic != "p.val") %>%
   filter(!str_detect(statistic, "control|episode")) %>%
@@ -375,103 +298,7 @@ df_freq_summaries %>%
   kable_styling() %>%
   kableExtra::group_rows("Heart Rate", 1, 4) %>%
   kableExtra::group_rows("High Frequency", 5, 10) %>%
-  kableExtra::group_rows("Low Frequency", 11, 16) %>%
-  kableExtra::group_rows("LF-HF Ratio", 17, 22)
-```
-
-(ref:freqComparison) Between-Groups Permutation *t*-test of Frequency Domain Features
-
-(ref:freqComparisonPlot) Between-Groups Permutation *t*-test of Frequency Domain Features: a) Heart Rate Features; b) High Frequency Features; c) Low Frequency Features d) Low Frequency-High Frequency Ratio Features
-
-Using the same Two-*t* permutation approach, we found signficant differences in means for Average Heart Rate, Average non-interpolated Heart Rate, Ending non-interpolated Heart Rate, and the LF-HF ratio in the third window, shown in Table \@ref(tab:freqComparison).
-```{r freqComparison, warning = FALSE, message = FALSE}
-### tabulate the results of the frequency domain permutation t test
-df_freq_summaries %>%
-  filter(str_detect(statistic, "control|episode|p.val")) %>%
-  spread(key = statistic, value = value) %>%
-  select(-p.val, everything()) %>%
-  slice(match(order, variable)) %>%
-  kable(digits=2, caption = '(ref:freqComparison)') %>%
-  kable_styling() %>%
-  kableExtra::group_rows("Heart Rate", 1, 4) %>%
-  kableExtra::group_rows("High Frequency", 5, 10) %>%
-  kableExtra::group_rows("Low Frequency", 11, 16) %>%
-  kableExtra::group_rows("LF-HF Ratio", 17, 22)
-```
-
-
-```{r freqComparisonPlot, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlot)'}
-
-faceted <- df_freq_summaries %>%
-  filter(str_detect(statistic, "control|episode|p.val")) %>%
-  spread(key = statistic, value = value) %>%
-  select(-p.val, everything()) %>%
-  gather("Group", "Mean", mean.control:mean.episode) %>%
-  mutate(facet = case_when(
-    str_detect(variable, "^HF_.*") ~ "High_Frequency",
-    str_detect(variable, "^LF_.*") ~ "Low_Frequency",
-    str_detect(variable, "^LFHF_.*") ~ "LF-HF Ratio",
-    str_detect(variable, "HR") ~ "Heart Rate"
-    )
-  ) %>%
-  nest(-facet)
-plots <- pmap(list(df = faceted$data, 
-             height = c(1.1, 1.1, 1.1, 1.1),
-             tip = c(0.3, 0.05, 0.1, 0.08)),
-        permutation_plot)
-
-#ggpubr::ggarrange(plotlist = plots, common.legend = T, font.label = list(face = 'bold', family = 'Times'), labels = paste0(letters[1:4], ")"))
-```
-
-(ref:freqComparisonPlotA) Between-Groups Permutation *t*-test of Frequency Domain Heart Rate Features
-
-(ref:freqComparisonPlotB) Between-Groups Permutation *t*-test of High Frequency Features
-
-(ref:freqComparisonPlotC) Between-Groups Permutation *t*-test of Low Frequency Features
-
-(ref:freqComparisonPlotD) Between-Groups Permutation *t*-test of Low Frequency-High Frequency Ratio Features
-
-```{r freqComparisonPlotA, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotA)'}
-## plot frequency domain significant vars (heart rate)
-df_freq_summaries %>%
-  filter(str_detect(statistic, "control|episode|p.val")) %>%
-  spread(key = statistic, value = value) %>%
-  select(-p.val, everything()) %>%
-  gather("Group", "Mean", mean.control:mean.episode) %>%
-  mutate(facet = case_when(
-    str_detect(variable, "^HF_.*") ~ "High_Frequency",
-    str_detect(variable, "^LF_.*") ~ "Low_Frequency",
-    str_detect(variable, "^LFHF_.*") ~ "LF-HF Ratio",
-    str_detect(variable, "HR") ~ "Heart Rate"
-    )
-  ) %>%
-  filter(facet == "Heart Rate") %>%
-  permutation_plot(., tip = 0.3, height = 1.1) +
-      labs(caption = expression(~italic(p)~"-values for permutation "~italic(t)~"-test with 10,000 permutations shown")) +
-  ylab(expression(paste("Mean Beats/min")))
-
-```
-
-```{r freqComparisonPlotD, warning = FALSE, message = FALSE, fig.cap = '(ref:freqComparisonPlotD)'}
-## plot frequency domain significant vars (lfhf ratio)
-
-df_freq_summaries %>%
-  filter(str_detect(statistic, "control|episode|p.val")) %>%
-  spread(key = statistic, value = value) %>%
-  select(-p.val, everything()) %>%
-  gather("Group", "Mean", mean.control:mean.episode) %>%
-  mutate(facet = case_when(
-    str_detect(variable, "^HF_.*") ~ "High_Frequency",
-    str_detect(variable, "^LF_.*") ~ "Low_Frequency",
-    str_detect(variable, "^LFHF_.*") ~ "LF-HF Ratio",
-    str_detect(variable, "HR") ~ "Heart Rate"
-    )
-  ) %>%
-  filter(facet == "LF-HF Ratio") %>%
-  permutation_plot(., tip = 0.05, height = 1.1)+
-      labs(caption = expression(~italic(p)~"-values for permutation "~italic(t)~"-test with 10,000 permutations shown")) +
-  ylab(expression(paste("Mean ", ms^{2})))
-
+  kableExtra::group_rows("Low Frequency", 11, 16)
 ```
 
 ## Machine Learning Analyses.
@@ -793,7 +620,7 @@ freq_domain_deltas <- bind_rows(perturbed_freq_1, perturbed_freq_2, perturbed_fr
 
 (ref:ml-metrics) Machine Learning Evaluation Metrics
 
-Machine learning models were implemented using time domain and frequency domain features separately. In order to run machine learning prediction of emotional eating episodes, only observations with complete data for all features in the time or frequency domain were used, data within each participant were scaled and centered, and observations were randomly upsampled (from episodes) or downsampled (from controls) to balance the number of observations and controls. SVM models were fit iteratively using 3/4's of the data, and evaluated on the remaining 1/4. Figure \@ref(fig:ml-metrics) shows the mean accuracy, sensitivity, and specificity of the SVM across these four folds.
+Machine learning models were implemented using time domain and frequency domain features separately. In order to run machine learning prediction of emotional eating episodes, only observations with complete data for all features in the time or frequency domain were used, data within each participant were scaled and centered, and observations were randomly upsampled (from episodes) or downsampled (from controls) to balance the number of observations and controls. SVM models were fit iteratively using 3/4's of the data, and their performance was evaluated on the remaining 1/4. Figure \@ref(fig:ml-metrics) shows the mean accuracy, sensitivity, and specificity of the SVM across these four folds.
 
 ```{r ml-metrics, warning = FALSE, message = FALSE, fig.cap = '(ref:ml-metrics)'}
 ### plotting the ml results
@@ -816,12 +643,13 @@ bind_rows(ml_time, ml_freq) %>%
   theme(text = element_text(size=15, family = "Times"))
 ```
 
+Overall, the frequency domain features achieve the highest classification accuracy (`r ml_freq %>% filter(Metric == "Accuracy") %>% mutate(Value = Value * 100) %>% pull(Value) %>% round(2) %>% paste0("%")`), sensitivity (`r ml_freq %>% filter(Metric == "Sensitivity") %>% mutate(Value = Value * 100) %>% pull(Value) %>% round(2) %>% paste0("%")`), and specificity (`r ml_freq %>% filter(Metric == "Specificity") %>% mutate(Value = Value * 100) %>% pull(Value) %>% round(2) %>% paste0("%")`).
 
 (ref:varImportance-time) Pseudo-Feature Importance by Removing & Perturbing Each Feature: Time Domain
 
 (ref:varImportance-freq) Pseudo-Feature Importance by Removing & Perturbing Each Feature: Frequency Domain
 
-To interpret the feature importance in each of these models, ROC curve analysis was conducted on each feature on the model as recommended by Khun @R-caret, by systemmatically removing each variable from the model and comparing the achieved Area Under the Curve (AUC) against that of the full model. In order to assess whether or not these features discriminate well between episodes and controls, models were fitted on the original data and the fitted values were perturbed for each variable. The probabilities of predictions were extracted from each perturbed model and compared to the probabilities of the original model, to understand how increasing values of the features increased or decreased the likelihood of an eating episode. Figures \@ref(fig:varImportance-time) and \@ref(fig:varImportance-freq) show the results of this analysis.
+To interpret the feature importance in each of these models, ROC curve analysis was conducted on each feature on the model as recommended by Khun @R-caret, by iteratively removing each variable, fitting the model on the 3/4 of training data, and comparing the achieved AUC in the 1/4 of testing data, against the AUC of the original model with all variables included. In order to assess whether or not these features discriminate well between episodes and controls, models were fitted on the 3/4 of training data and the fitted values were iteratively perturbed for each variable in the 1/4 of testing data. The probabilities of predictions for the testing data were extracted from each perturbed model and compared to the probabilities of the unperturbed model, to understand how increasing values of the features increased or decreased the likelihood of an eating episode. Figures \@ref(fig:varImportance-time) and \@ref(fig:varImportance-freq) show the results of this analysis.
 
 ```{r varImportance-time, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-time)'}
 ## plotting the time domain variable importance
@@ -860,7 +688,7 @@ time_domain_deltas %>%
   scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Perturbed")
 ```
 
-In the time domain, the most important feature by measure of scaled decrease in model AUC was *SDANN*, followed by *SDNN* and *MADRR*. Increasing values in *SDANN* by 1 unit tended to decrease the probability of observations being predicted as episode, suggesting that higher levels of *SDANN* decrease the likelihood of an eating episode. This same inference can be made of *MADRR*. In the case of *SDNN*, a 1 unit increase in values of this feature increased the probability of observations being predicted as episodes.
+In the time domain, the most important feature by measure of scaled decrease in model AUC was *SDANN*, followed by *SDNN* and *MADRR*. Increasing values in *SDANN* by 1 unit tended to decrease the mean probability of observations being predicted as episode, suggesting that higher levels of *SDANN* decrease the likelihood of an eating episode. This same inference can be made of *MADRR* and *rMSSD*. In the cases of *SDNN* and *SDNNIX*, a 1 unit increase in values of these features increased the mean probability of observations being predicted as episodes.
 
 ```{r varImportance-freq, warning = FALSE, message = FALSE, fig.cap = '(ref:varImportance-freq)'}
 ## plotting the frequency domain variable importance
@@ -901,170 +729,30 @@ freq_domain_deltas %>%
   scale_color_viridis_d(name = "Mean Change in Probability of \"Episode\" Prediction when Perturbed")
 ```
 
-In the frequency domain, the most important features by measure of decrease in model AUC were the High Frequency windows $HF_2$, $HF_6$, and $HF_3$. Increasing values in $HF_2$ by one unit tended to decrease the probability of observations being predicted as episode, suggesting that stronger signals in the high frequency band at this time in the window decrease the likelihood of an eating episode. This inference is the opposite, however, for $HF_6$ and $HF_3$, which show that increasing these variables' values by one unit tends to increase the likelihood of an eating episode. Interestingly, while the heart rate variables *Avg_HR*, *Avg_niHR*, and *End_niHR* had significantly different means, their affect on the achieved AUC was relatively minimal, indicating they had very small feature importance for this model.
+In the frequency domain, the most important features by measure of decrease in model AUC were the High Frequency windows $HF_2$, $HF_6$, $HF_3$, and $HF_4$. Increasing values in $HF_2$ and $HF_4$ by one unit tends to decrease the probability of observations being predicted as episode, suggesting that stronger signals in the high frequency band at this time in the window decrease the likelihood of an eating episode. This inference is the opposite, however, for $HF_6$ and $HF_3$, which show that increasing these variables' values by one unit tends to increase the likelihood of an eating episode. Although variables in the low frequency band showed less importance by virtue of their affect on the AUC, the pattern of increasing probability of predictions mirrors that in the high frequency band, as $LF_3$ and $LF_6$ tend to increase the probability of an episode prediction when perturbed, while the remaining windows' features decrease the probability. Interestingly, while the heart rate variables *Avg_HR*, *Avg_niHR*, and *End_niHR* had the most complete data and visibly different means, their affect on the achieved AUC was relatively minimal, indicating they had very small feature importance for this model.
 
-(ref:highfreq-timeseries) Time Series of High Frequency Band
+(ref:freq-timeseries) Time Series of Frequency Band Features
 
-(ref:lowfreq-timeseries) Time Series of Low Frequency Band
+To better interpret how the signal in the frequency domain varies through the 30-minute window, we plot the raw data in Figure \@ref(fig:freq-timeseries). This visualisation demonstrates how, in the third and sixth windows, the trajectory of the signal for episodes becomes more visibly positive than for controls. This may explain the high variable importance of $HF_3$ and $HF_6$ in predicting episodes. A similar pattern can be seen in the low frequency band, though to a lesser extent, explaining why the variable importance for the low frequency features is much lower.
 
-To better interpret how the signal in the high frequency band of heart rate varies through the 30-minute window, we plot these values in Figure \@ref(fig:highfreq-timeseries).
-
-```{r highfreq-timeseries, warning = FALSE, message = FALSE, fig.cap = '(ref:highfreq-timeseries)'}
+```{r freq-timeseries, warning = FALSE, message = FALSE, fig.cap = '(ref:freq-timeseries)'}
 ## plot the raw data for clarity
 
 df_freq_ml %>%
-  gather('variable', 'value', HF_1:HF_6) %>%
-  #mutate(facet = ifelse(str_detect(variable, 'HF'), "HF", "LF")) %>%
+  gather('variable', 'value', HF_1:LF_6) %>%
+  mutate(
+    Band = ifelse(str_detect(variable, 'HF'), "High Frequency Band", "Low Frequency Band"),
+    variable = str_remove(variable, "[A-Z]+_") %>% as.factor()
+  ) %>%
   ggplot(aes(x=variable, y=value, colour=Y)) +
     geom_jitter(alpha = 0.6, width = 0.15) +
     stat_smooth(aes(group = Y), method = "loess") +
-    #facet_wrap(facet~.) +
+    facet_wrap(Band~.) +
     labs(x = "Frequency Band Window", y = "Z-Value") +
     theme_minimal() +
     theme(
-        axis.text.x = element_text(angle = 90, hjust = 1),
+        #axis.text.x = element_text(angle = 90, hjust = 1),
         text = element_text(size=15, family = "Times")
     ) +
     scale_color_viridis_d()
 ```
-
-The visualisation shows that at the second window, $HF_2$, there is an inverse relationship between the trajectories of episodes and controls, which may represent the high variable importance of $HF_2$. $HF_6$ shows a similar inverse trend, as increasing values of this variable are associated with episodes while decreasing values are associated with controls.
-
-```{r lowfreq-timeseries, warning = FALSE, message = FALSE, fig.cap = '(ref:lowfreq-timeseries)'}
-## plot the raw data for clarity
-
-df_freq_ml %>%
-  gather('variable', 'value', LF_1:LF_6) %>%
-  #mutate(facet = ifelse(str_detect(variable, 'HF'), "HF", "LF")) %>%
-  ggplot(aes(x=variable, y=value, colour=Y)) +
-    geom_jitter(alpha = 0.6, width = 0.15) +
-    stat_smooth(aes(group = Y), method = "loess") +
-    #facet_wrap(facet~.) +
-    labs(x = "Frequency Band Window", y = "Z-Value") +
-    theme_minimal() +
-    theme(
-        axis.text.x = element_text(angle = 90, hjust = 1),
-        text = element_text(size=15, family = "Times")
-    ) +
-    scale_color_viridis_d()
-```
-
-(ref:corrplot-time) Correlation Matrix of Time Domain Features
-
-
-(ref:corrplot-freq) Correlation Matrix of Time Domain Features
-
-
-Additionally, a correlation matrix is added to address how features may interact in Figures \@ref(fig:corrplot-time) and \@ref(fig:corrplot-freq).
-
-```{r corrplot-time, warning = FALSE, message = FALSE, fig.cap = '(ref:corrplot-time)'}
-time_features <- time_domain_deltas %>% 
-  #group_by(variable) %>%
-  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
-  right_join(auc_time, by = "variable") %>%
-  as_tibble() %>%
-  mutate(
-    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
-    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
-  ) %>%
-  filter(Reduction_AUC > 0.2 & variable != "SDSD") %>%
-  select(variable) %>%
-  pull()
-
-p_mat <- df_time_ml %>%
-  select(time_features) %>%
-  cor_pmat() %>%
-  as_tibble(rownames = 'id') %>%
-  mutate_at(vars(-id), funs(case_when(. >= 0.05 ~ "NS", . < 0.05 ~ "S"))) %>%
-  column_to_rownames('id') %>%
-  as.matrix() %>%
-  {
-    .[upper.tri(.)] <- NA
-    .
-  } %>%
-  reshape2::melt(value.name = "p_val")
-
-df_time_ml %>%
-  select(time_features) %>%
-  cor() %>%
-  round(3) %>%
-  {
-    .[upper.tri(.)] <- NA
-    .
-  } %>%
-  reshape2::melt() %>%
-  left_join(p_mat) %>%
-  #ggcorrplot(type = 'lower', outline.color = "white") +
-  ggplot(aes(Var1, Var2, fill = value)) +
-  geom_tile(color = "white") +
-  geom_text(aes(label = p_val)) +
-  scale_fill_viridis_c(name = "Correlation Coefficient", na.value = 'white') +
-  theme_minimal() +
-  theme(
-    text = element_text(size=15, family = "Times"),
-    axis.text.x = element_text(angle = 90, hjust = 1)
-    ) +
-  labs(caption = "S: Significant Correlation\nNS: Non-Significant Correlation")
-  NULL
-```
-
-```{r corrplot-freq, warning = FALSE, message = FALSE, fig.cap = '(ref:corrplot-freq)'}
-frequency_features <- freq_domain_deltas %>% 
-  #group_by(variable) %>%
-  #summarise(Delta_Probability = mean(Delta_Probability)) %>%
-  right_join(auc_freq, by = "variable") %>%
-  as_tibble() %>%
-  mutate(
-    Feature = fct_reorder(variable, Reduction_AUC, .desc = TRUE),
-    Delta_Probability = as.factor(ifelse(Delta_Probability >= 0, "Increase", "Decrease"))
-  ) %>%
-  filter(Reduction_AUC > 0.2) %>%
-  select(variable) %>%
-  pull()
-
-p_mat <- df_freq_ml %>%
-  select(frequency_features) %>%
-  cor_pmat() %>%
-  as_tibble(rownames = 'id') %>%
-  mutate_at(vars(-id), funs(case_when(. >= 0.05 ~ "NS", . < 0.05 ~ "S"))) %>%
-  column_to_rownames('id') %>%
-  as.matrix() %>%
-  {
-    .[upper.tri(.)] <- NA
-    .
-  } %>%
-  reshape2::melt(value.name = "p_val")
-
-
-df_freq_ml %>%
-  select(frequency_features) %>%
-  cor() %>%
-    round(3) %>%
-  {
-    .[upper.tri(.)] <- NA
-    .
-  } %>%
-  reshape2::melt() %>%
-  left_join(p_mat) %>%
-  #ggcorrplot(type = 'lower', outline.color = "white") +
-  ggplot(aes(Var1, Var2, fill = value)) +
-  geom_tile(color = "white") +
-  geom_text(aes(label = p_val)) +
-  scale_fill_viridis_c(name = "Correlation Coefficient", na.value = 'white') +
-  theme_minimal() +
-  theme(
-    text = element_text(size=15, family = "Times"),
-    axis.text.x = element_text(angle = 90, hjust = 1)
-    ) +
-  labs(caption = "S: Significant Correlation\nNS: Non-Significant Correlation")
-  NULL
-```
-
-# Discussion
-
-A major hurdle to producing interpretable results is the sanity of data obtained from the devices. Despite best efforts, figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate how sparse the data can be and how this affects its overall usefulness in running analyses.The causes for this data sparsity are unclear, and could include reasons such as improper usage or low signal while recording data. The result of this challenge is that derived features are incalculable; for example, time domain feature calculations are strongly dependent on a sliding window that must have within it at least some number of consecutive heart beats, or completeness and consecutiveness of *SDNN*; frequency domain variables are dependent on Fourier transforms which are sensitive to small and variations in wave frequencies. Nevertheless, by following proper data sanity checks and procedures provided in analyses packages and in the literature, it's still possible to extract useful information from these data.
-
-Although no features in the time domain were significantly different between episode and control observations when tested, it's worth mentioning that the machine learning model was still able to achieve decent classification accuracy, sensitivity, and specificity using these features. The most impactful features in this model were *rMSSD* (Root Mean Square of Successive Differences); *SDSD* (Standard Deviation of Successive Differences of inter-beat intervals); and *MADRR* (Median of the Absolute values of the successive Differences between the inter-beat intervals). However, the frequency domain achieved superior classification accuracy in comparison to the time domain, with mean accuracy of `r 100*round(results_freq['Accuracy'], 3)`%, sensitivity of `r 100*round(results_freq['Sensitivity'], 3)`%, and specificity of `r 100*round(results_freq['Specificity'], 3)`%. For this model, the greatest variable importance was for $HF_1$, $LF_5$, $LF_6$, $LF_1$, and $LF_2$. This may reflect a tendency of heart rate to change most noticeably in the low frequency power band, in the moments leading up to an eating episode.
-
-***
-
