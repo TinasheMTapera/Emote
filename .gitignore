@@ -8,3 +8,10 @@ old_Files/
 *.pyc
 Icon?
 *.tex
+*.fff
+*.ttt
+*.out
+*.log
+*.aux
+*.RData
+latex/

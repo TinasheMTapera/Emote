@@ -1,7 +1,6 @@
 ---
 title             : "Momentary Changes in Heart Rate Variability Can Detect Risk for Experiencing Emotional Eating Episodes"
 shorttitle        : "Changes in HRV Predict Emotional Eating"
-
 author: 
   - name          : "Adrienne S. Juarascio, Ph.D."
     affiliation   : "1,2"
@@ -16,7 +15,6 @@ author:
     affiliation   : "3"
   - name          : "Zoe Zhang, Ph.D."
     affiliation   : "2"
-
 affiliation:
   - id            : "1"
     institution   : "Center for Weight, Eating, and Lifestyle Sciences (WELL Center), Drexel University, Stratton Hall, 3141 Chestnut Street Philadelphia, PA 19104"
@@ -26,21 +24,12 @@ affiliation:
     institution   : "Department of Psychology, University of South Florida, 4202 E Fowler Ave, Tampa, FL 33202, USA"
   - id            : "4"
     institution   : "Department of Psychiatry, Perelman School of Medicine, University of Pennsylvania, Philadelphia, PA, 19104"
-  
-
-authornote: |
-  Add complete departmental affiliations for each author here. Each new line herein must be indented, like this line.
-
-  Enter author note here.
-
 abstract: |
-  Objective: A range of evidence supports that emotion dysregulation contributes to maladaptive eating behaviors broadly and may function as a powerful antecedent to emotional eating, specifically. New passive sensing technology offers the prospect of detecting emotion regulation in real-time through measurement of heart rate variability (HRV), a transdiagnostic bio-signal for emotion regulation, which may in turn predict risk of a maladaptive eating behavior. In the current study, our primary aim was to test whether changes in momentary HRV can be used to detect risk of experiencing an emotional eating episode in an ecologically valid setting. Method: Participants were 21 adults with clinically significant emotional eating behaviors. The Empatica E4 wrist-sensor was worn to measure heart rate variability and emotional eating episodes were reported using ecological momentary assessment for four weeks. Time and frequency domain features of HRV were extracted in the 30-minute period preceding emotional eating episodes and control episodes. Machine learning models were implemented using time domain and frequency domain features. Results: We found that HRV domain features significantly differed in the minutes preceding emotional eating episodes as compared to controls, though no such differences were found in the corresponding time-domain features. Discussion: Future work should be conducted to improve existing ambulatory sensors for HRV to allow for the collection of more valid and complete HRV data, which would allow researchers to better explore the ways in which wearable sensor technology may replace current self-report measures of real-time emotional states and power just-in-time interventions targeting maladaptive eating behaviors.
   
+  Objective: A range of evidence supports that emotion dysregulation contributes to maladaptive eating behaviors broadly and may function as a powerful antecedent to emotional eating, specifically. New passive sensing technology offers the prospect of detecting emotion regulation in real-time through measurement of heart rate variability (HRV), a transdiagnostic bio-signal for emotion regulation, which may in turn predict risk of a maladaptive eating behavior. In the current study, our primary aim was to test whether changes in momentary HRV can be used to detect risk of experiencing an emotional eating episode in an ecologically valid setting. Method: Participants were 21 adults with clinically significant emotional eating behaviors. The Empatica E4 wrist-sensor was worn to measure heart rate variability and emotional eating episodes were reported using ecological momentary assessment for four weeks. Time and frequency domain features of HRV were extracted in the 30-minute period preceding emotional eating episodes and control episodes. Machine learning models were implemented using time domain and frequency domain features. Results: We found that HRV domain features significantly differed in the minutes preceding emotional eating episodes as compared to controls, though no such differences were found in the corresponding time-domain features. Discussion: Future work should be conducted to improve existing ambulatory sensors for HRV to allow for the collection of more valid and complete HRV data, which would allow researchers to better explore the ways in which wearable sensor technology may replace current self-report measures of real-time emotional states and power just-in-time interventions targeting maladaptive eating behaviors.
 keywords          : "emotion regulation, heart rate variability, emotional eating, sensor technology, ecological momentary assessment"
-wordcount         : "X"
-
+wordcount         : "`r wordcountaddin::word_count('FullDraft.Rmd')`""
 bibliography      : ["citations.bib", "emote.bib"]
-
 floatsintext      : no
 figurelist        : no
 tablelist         : no
@@ -48,17 +37,20 @@ footnotelist      : no
 linenumbers       : yes
 mask              : no
 draft             : no
-
 documentclass     : "apa6"
 classoption       : "man"
-output            : 
+output:
   papaja::apa6_pdf:
+    keep_tex: true
     latex_engine: xelatex
+  papaja::apa6_word:
+    reference_docx: ~/Dropbox/EMOTE HRV Paper/EMOTE HRV Manuscript 5-10.docx
+always_allow_html: yes
 ---
 
 ```{r setup, include = FALSE}
 library("papaja")
-options(tinytex.verbose = TRUE)
+options(tinytex.verbose = TRUE, tinytex.clean = FALSE)
 ```
 
 # Introduction
@@ -89,7 +81,7 @@ In the current study, our primary aim was to test whether changes in momentary H
 
 In this preliminary examination of momentary HRV as a predictor of emotional eating, we found partial support for our hypothesis that a wrist-worn passive sensing system capturing HRV was able to predict risk of experiencing an emotional eating episode. Specifically, results found HRV domain features significantly differed in the 10-20 minutes preceding emotional eating episodes as compared to control episodes. However, no such differences were found in the time-domain features in time windows preceding control versus emotional eating episodes. In addition, two machine learning models were developed using time domain and frequency domain features, respectively, that each achieved satisfactory classification accuracy, sensitivity, and specificity, although the model using frequency domain features achieved superior accuracy. Within the machine learning model using frequency domain features, heart rate variability in both the high and low frequency power band emerged as especially predictive features ($HF_1$, $LF_5$, $LF_6$, $LF_1$, and $LF_2$) suggesting a tendency of heart rate to change in the low-frequency power band in the moments preceding an emotional eating episode.
 
-The study’s findings bolster support for the relation between reductions in HRV and maladaptive eating episodes. Specifically, these results are consistent with those from a recent study that found reductions in HRV preceded loss-of-control eating episodes [@ranzenhofer2016]. In addition, our findings showing that lower RMSSD precedes emotional eating episodes is consistent with existing literature that has found lower RMSSD to be associated with anxiety [@kemp2014major], depression [@rottenberg2007cardiac], higher impulsivity [@spitoni2017obesity], and reduced self-regulation [@hovland2012relationships; spitoni2017obesity].  Taken together, these findings lend support for the notion that reductions in HRV may serve as a biomarker for decreased emotion regulatory activity and consequently, susceptibility to maladaptive eating. 
+The study’s findings bolster support for the relation between reductions in HRV and maladaptive eating episodes. Specifically, these results are consistent with those from a recent study that found reductions in HRV preceded loss-of-control eating episodes [@ranzenhofer2016]. In addition, our findings showing that lower RMSSD precedes emotional eating episodes is consistent with existing literature that has found lower RMSSD to be associated with anxiety [@kemp2014major], depression [@rottenberg2007cardiac], higher impulsivity [@spitoni2017obesity], and reduced self-regulation [@hovland2012relationships; @spitoni2017obesity].  Taken together, these findings lend support for the notion that reductions in HRV may serve as a biomarker for decreased emotion regulatory activity and consequently, susceptibility to maladaptive eating. 
 
 In contrast to findings from previous [@ranzenhofer2016], the current study found several time domain features, including SDANN, SDNN, MADRR, and SDNNIDX, to be more predictive of emotional eating episodes than RMSSD. In addition, a review of HRV and emotion regulation [@anderson2018differences] suggested that higher levels of HF HRV and SDNN have been linked to emotion regulatory efforts, whereas lower levels of HF HRV and SDNN have been associated with a stress response; thus, our findings indicating that increases in $HF_3$, and $HF_6$, SDNN predicted emotional eating episodes were surprising, especially given that decreases in $HF_2$, $HF_4$, and $HF_5$, also predicted emotional eating episodes.  However, in the case of frequency domain variables (e.g., $HF$), our approach in separating HRV features into 5-minute increments is innovative and unique; using this approach, the data demonstrates that the trajectory of changes in HRV is not linear and may be dynamic in the minutes preceding emotional eating episodes.
 

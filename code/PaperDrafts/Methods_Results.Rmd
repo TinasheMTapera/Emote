@@ -11,7 +11,7 @@ bibliography: citations.bib
 always_allow_html: yes
 ---
 
-```{r packages and setup}
+```{r packages and setup, echo =FALSE, warning = FALSE, message = FALSE}
 suppressPackageStartupMessages(
   {
     library(tidyverse, quietly = TRUE)
@@ -29,6 +29,7 @@ suppressPackageStartupMessages(
     library(ModelMetrics, quietly = TRUE)
     library(scales, quietly = TRUE)
     library(ggcorrplot, quietly = TRUE)
+    library(papaja, quietly = TRUE)
   }
 )
 
@@ -100,7 +101,7 @@ df_time <- read_csv(here('data', 'Preprocessing_data_outputs', 'Paper', 'data_ou
 
 ## Statistical Analyses
 
-Data analyses were carried out in `r R.version$version.string` and Python 2.7. In accordance with previous studies examining the relation between HRV and discrete eating episodes [@friesen_lin_schurman_andre_callum_2007; @harthoorn_dransfield_2007; @ranzenhofer2016], physiological data collected in the 30-minute period preceding the eating episode were examined. For each participant, the inter-beat interval (IBI) for each self-reported survey was selected, where surveys were either self-reported at the time of an eating episode, or pseudo-randomly triggered in the app. This resulted in an initial total of $n=$ `r all_surveys %>% filter(Y == "Episode") %>% nrow()` emotional eating episodes and $n=$ `r all_surveys %>% filter(Y == "Control") %>% nrow()` control episodes before cleaning the data.
+Data analyses were carried out in `r R.version$version.string` and Python 2.7. In accordance with previous studies examining the relation between HRV and discrete eating episodes [@friesen_lin_schurman_andre_callum_2007; @RN678; @ranzenhofer2016], physiological data collected in the 30-minute period preceding the eating episode were examined. For each participant, the inter-beat interval (IBI) for each self-reported survey was selected, where surveys were either self-reported at the time of an eating episode, or pseudo-randomly triggered in the app. This resulted in an initial total of $n= `r all_surveys %>% filter(Y == "Episode") %>% nrow()`$ emotional eating episodes and $n= `r all_surveys %>% filter(Y == "Control") %>% nrow()`$ control episodes before cleaning the data.
 
 Using the RHRV package [@R-RHRV], IBI data streams were filtered, interpolated, and artifacts were removed, using thresholds and parameters in compliance with normative reported values for heart rate variability features [@shaffer_ginsberg_2017]. Observations that did not meet normative criteria were removed. Consistent with existing research, features of heart rate variability were extracted from both the time and frequency domain to measure both the amount of variability and the amount of signal energy in the 30-minute period [@shaffer_ginsberg_2017; @Rubin:2016:TFC:3021319.3021332].
   
@@ -141,7 +142,7 @@ df_freq_nrow <- df_freq %>%
 (ref:missingness-tab) Number of Observations Extracted for Each Feature
 
 
-After cleaning the dataset of erroneous surveys (e.g. no usable IBI data; overlapping survey responses; control observations with high self-reported stress), and filtering IBI streams that did not meet filtering quality criteria for preprocessing, the data consisted of $n=$ `r df_time_nrow %>% filter(Y == "Episode") %>% pull(n)` emotional eating episodes and $n=$ `r df_time_nrow %>% filter(Y == "Control") %>% pull(n)` controls. Of these clean observations, HRV features were extracted from the IBI streams, although even with filtering, many IBI streams were too sparse to compute HRV features. Figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate the completeness of data in the extracted time and frequency domain features, with table \@ref(tab:missingness-tab) showing the final number of observations used for analysis. Much of the data missing from the time domain is due to the fact that these features are derived from SDNN and are dependent on having sufficient data in this feature.
+After cleaning the dataset of erroneous surveys (e.g. no usable IBI data; overlapping survey responses; control observations with high self-reported stress), and filtering IBI streams that did not meet filtering quality criteria for preprocessing, the data consisted of $n= `r df_time_nrow %>% filter(Y == "Episode") %>% pull(n)`$ emotional eating episodes and $n= `r df_time_nrow %>% filter(Y == "Control") %>% pull(n)`$ controls. Of these clean observations, HRV features were extracted from the IBI streams, although even with filtering, many IBI streams were too sparse to compute HRV features. Figures \@ref(fig:missingness-time) and \@ref(fig:missingness-freq) illustrate the completeness of data in the extracted time and frequency domain features, with Table \@ref(tab:timeSummary) showing the final number of observations used for analysis. Much of the data missing from the time domain is due to the fact that these features are derived from SDNN and are dependent on having sufficient data in this feature.
 
 
 ```{r missingness-time, fig.cap='(ref:missingness-time)'}
@@ -166,7 +167,7 @@ df_freq %>%
   # remove high stress controls
   filter(!(Stress >= 5 & Y == "Control")) %>%
   select(-c(winds, threshold, index, when, Event, Stress, ID, Y)) %>%
-  select(Avg_niHR:LFHF_6) %>%
+  select(Avg_niHR:LF_6) %>%
   vis_miss(.) +
   theme(
     axis.text.x = element_text(angle = 90, hjust = 1),
@@ -277,7 +278,7 @@ df_time_summaries %>%
   filter(statistic != "p.val") %>%
   filter(!str_detect(statistic, "control|episode")) %>%
   spread(key = statistic, value = value) %>%
-  select(variable, n, mean, sd) %>% 
+  select(Variable=variable, N=n, Mean=mean, SD=sd) %>% 
   kable(digits=2, caption = '(ref:timeSummary)') %>%
   kable_styling()
   
@@ -292,8 +293,8 @@ df_freq_summaries %>%
   filter(statistic != "p.val") %>%
   filter(!str_detect(statistic, "control|episode")) %>%
   spread(key = statistic, value = value) %>%
-  select(variable, n, mean, sd) %>%
-  slice(match(order, variable)) %>%
+  select(Variable=variable, N=n, Mean=mean, SD=sd) %>% 
+  slice(match(order, Variable)) %>%
   kable(digits=2, caption = '(ref:freqSummary)') %>%
   kable_styling() %>%
   kableExtra::group_rows("Heart Rate", 1, 4) %>%
